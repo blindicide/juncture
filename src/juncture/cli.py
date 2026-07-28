@@ -80,6 +80,22 @@ def _compare_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def _paper_assets(args: argparse.Namespace) -> int:
+    from .publication import build_assets
+
+    build_assets(Path(args.analysis_dir))
+    print(Path(args.analysis_dir))
+    return 0
+
+
+def _compare_runs(args: argparse.Namespace) -> int:
+    from .verification import compare_runs
+
+    created = compare_runs([Path(value) for value in args.analysis_dir], Path(args.output_dir) if args.output_dir else None)
+    print(created)
+    return 0
+
+
 def _plot(args: argparse.Namespace) -> int:
     from .plots import plot_run
 
@@ -126,6 +142,13 @@ def main(argv: list[str] | None = None) -> int:
     baseline.add_argument("--left-run-dir", required=True)
     baseline.add_argument("--right-run-dir", required=True)
     baseline.set_defaults(func=_compare_baseline)
+    assets = commands.add_parser("paper-assets")
+    assets.add_argument("--analysis-dir", required=True)
+    assets.set_defaults(func=_paper_assets)
+    compare = commands.add_parser("compare-runs")
+    compare.add_argument("--analysis-dir", action="append", required=True)
+    compare.add_argument("--output-dir")
+    compare.set_defaults(func=_compare_runs)
     plot = commands.add_parser("plot")
     plot.add_argument("--run-dir", required=True)
     plot.add_argument("--language", choices=["en", "ru"], default="en")

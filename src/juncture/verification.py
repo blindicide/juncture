@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -74,3 +76,25 @@ def compare_baseline(left_dir: Path, right_dir: Path, tolerance: float = 1e-12) 
             "semantic_drift": sorted(set(a.columns) ^ set(b.columns)),
         }
     return report
+
+
+def compare_runs(analysis_dirs: list[Path], output_dir: Path | None = None) -> Path:
+    """Create a minimal, schema-checked synthesis from analysis-v2 directories."""
+    sources = []
+    for directory in analysis_dirs:
+        provenance = json.loads((directory / "provenance.json").read_text(encoding="utf-8"))
+        if provenance.get("analysis_schema_version") != 2:
+            raise ValueError(f"unsupported analysis schema in {directory}")
+        sources.append({"analysis_dir": str(directory), **provenance})
+    if output_dir is None:
+        output_dir = analysis_dirs[0].parent.parent / "synthesis" / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    output_dir.mkdir(parents=True, exist_ok=False)
+    (output_dir / "source_analyses.json").write_text(json.dumps(sources, indent=2, sort_keys=True), encoding="utf-8")
+    rows = []
+    for directory, source in zip(analysis_dirs, sources, strict=True):
+        path = directory / "derived" / "configuration_summary.parquet"
+        if path.exists():
+            frame = pd.read_parquet(path)
+            rows.append({"analysis_id": source["analysis_id"], "source_run_id": source["source_run_id"], "configurations": len(frame)})
+    pd.DataFrame(rows).to_csv(output_dir / "synthesis_index.csv", index=False)
+    return output_dir

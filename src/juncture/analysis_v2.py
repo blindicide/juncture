@@ -349,6 +349,26 @@ def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
     scaling.to_csv(target / "derived" / "collision_scaling_replication_slopes.csv", index=False)
     theory = _theory_metadata(run_dir, exact)
     theory.to_csv(target / "derived" / "theory_validation.csv", index=False)
+    diagnostics_fields = [
+        field
+        for field in quantized
+        if field.startswith(("arrival_quantization_error_", "service_quantization_error_"))
+    ]
+    diagnostic_keys = [key for key in ("quantizer", "rho", "capacity", "delta", "policy") if key in quantized]
+    diagnostics = quantized.groupby(diagnostic_keys, as_index=False)[diagnostics_fields].mean()
+    diagnostics.to_csv(target / "derived" / "quantization_diagnostics.csv", index=False)
+    correlations: list[dict[str, Any]] = []
+    for error in ("arrival_quantization_error_signed_mean", "service_quantization_error_signed_mean"):
+        for outcome in ("packet_loss_probability", "throughput", "mean_waiting_time", "time_average_number_in_system"):
+            usable = quantized[[error, outcome]].dropna() if error in quantized and outcome in quantized else pd.DataFrame()
+            if len(usable) > 2:
+                correlations.append({
+                    "error_metric": error, "outcome": outcome, "n": len(usable),
+                    "pearson": usable.corr(method="pearson").iloc[0, 1],
+                    "spearman": usable.corr(method="spearman").iloc[0, 1],
+                    "interpretation": "association only; not causal",
+                })
+    pd.DataFrame(correlations).to_csv(target / "derived" / "quantization_correlations.csv", index=False)
     predictor = paired.copy()
     if not predictor.empty:
         predictor["absolute_policy_gap"] = predictor.get("absolute_packet_loss_probability_gap")
@@ -369,5 +389,24 @@ def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
         ]
         models.append(fit_grouped_ols(predictor, "absolute_policy_gap", ["critical_collision_rate", "rho", "inverse_capacity", "delta"], "multivariable", "workload_id"))
         pd.DataFrame(models).to_csv(target / "derived" / "predictor_models.csv", index=False)
+        identity = predictor.dropna(subset=["absolute_policy_gap", "critical_collision_rate"])
+        identity_rows = []
+        if len(identity) > 1:
+            import statsmodels.api as sm
+
+            for intercept in (True, False):
+                design = identity[["critical_collision_rate"]]
+                if intercept:
+                    design = sm.add_constant(design)
+                fit = sm.OLS(identity.absolute_policy_gap, design).fit(cov_type="HC3")
+                identity_rows.append({
+                    "model": "with_intercept" if intercept else "through_origin",
+                    "n": len(identity), "r_squared": fit.rsquared,
+                    "slope": fit.params["critical_collision_rate"],
+                    "slope_hc3_se": fit.bse["critical_collision_rate"],
+                    "intercept": fit.params.get("const", 0.0),
+                    "interpretation": "identity test, not an estimator",
+                })
+        pd.DataFrame(identity_rows).to_csv(target / "derived" / "critical_identity_tests.csv", index=False)
         atomic_parquet(predictor, target / "derived" / "predictor_rows.parquet")
     return target
