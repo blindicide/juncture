@@ -57,3 +57,4 @@ def test_v2_manifest_ids_are_deterministic_and_worker_independent(tmp_path) -> N
     left = pd.read_parquet(one / "raw" / "quantized_results.parquet").sort_values("task_id")
     right = pd.read_parquet(two / "raw" / "quantized_results.parquet").sort_values("task_id")
     assert left.packet_loss_probability.tolist() == right.packet_loss_probability.tolist()
+    assert left.quantization_seed.tolist() == right.quantization_seed.tolist()

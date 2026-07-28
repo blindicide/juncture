@@ -155,6 +155,7 @@ def _run_one(task: dict[str, Any], config_data: dict[str, Any]) -> dict[str, Any
             workload,
             capacity=int(task["capacity"]),
             service_rate=config.service_rate,
+            quantization_seed=int(task.get("quantization_seed", 0)),
             arrival_scheduling_mode=str(task.get("arrival_scheduling_mode", "preload_all")),
         )
     else:

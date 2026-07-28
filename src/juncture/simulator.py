@@ -493,6 +493,7 @@ def simulate_exact(
     *,
     capacity: int,
     service_rate: float = 1.0,
+    quantization_seed: int = 0,
     arrival_scheduling_mode: str = "preload_all",
     debug: bool = False,
 ) -> dict[str, Any]:
@@ -501,6 +502,7 @@ def simulate_exact(
         capacity=capacity,
         service_rate=service_rate,
         exact=True,
+        quantization_seed=quantization_seed,
         arrival_scheduling_mode=arrival_scheduling_mode,
         debug=debug,
     ).run()
