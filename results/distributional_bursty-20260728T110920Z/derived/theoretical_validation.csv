@@ -1,0 +1,2 @@
+rho,capacity,n,simulated_exact_loss,simulated_effective_throughput,theoretical_loss,theoretical_effective_throughput,absolute_loss_difference,relative_loss_difference
+0.8,4,5,0.24541200000000002,0.6056527585404579,0.12184673964778678,0.7025226082817706,0.12356526035221324,1.014103953125

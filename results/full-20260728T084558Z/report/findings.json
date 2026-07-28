@@ -1,0 +1,55 @@
+[
+  {
+    "finding_id": "exact_theory_validation",
+    "text": "The largest exact-theory absolute packet-loss difference was 0.00168197 at \u03c1=1.1, K=16.",
+    "source_table": "theoretical_validation.csv",
+    "source_columns": [
+      "absolute_loss_difference",
+      "rho",
+      "capacity"
+    ],
+    "filtering_conditions": "maximum absolute_loss_difference",
+    "numeric_values": {
+      "absolute_loss_difference": 0.0016819687339705
+    }
+  },
+  {
+    "finding_id": "collision_scaling_exponent",
+    "text": "The mean fitted collision-scaling exponent across available configurations was 0.984.",
+    "source_table": "collision_scaling_regression.csv",
+    "source_columns": [
+      "scaling_exponent"
+    ],
+    "filtering_conditions": "mean across configurations",
+    "numeric_values": {
+      "mean_scaling_exponent": 0.984025206257122
+    }
+  },
+  {
+    "finding_id": "largest_policy_range",
+    "text": "The largest observed policy range was 0.00578 at \u03c1=1.25, K=4, \u03b4=0.1.",
+    "source_table": "paired_differences.parquet",
+    "source_columns": [
+      "absolute_policy_range",
+      "rho",
+      "capacity",
+      "delta"
+    ],
+    "filtering_conditions": "maximum absolute_policy_range",
+    "numeric_values": {
+      "absolute_policy_range": 0.005780000000000007
+    }
+  },
+  {
+    "finding_id": "critical_predictor_r2",
+    "text": "The critical-collision predictor model had R\u00b2=0.628.",
+    "source_table": "regression_results.csv",
+    "source_columns": [
+      "r_squared"
+    ],
+    "filtering_conditions": "model=C_critical_difference",
+    "numeric_values": {
+      "r_squared": 0.6278931185533283
+    }
+  }
+]

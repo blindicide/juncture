@@ -1,0 +1,43 @@
+[
+  {
+    "finding_id": "exact_theory_validation",
+    "text": "The largest exact-theory absolute packet-loss difference was 0.000611142 at \u03c1=1.1, K=4.",
+    "source_table": "theoretical_validation.csv",
+    "source_columns": [
+      "absolute_loss_difference",
+      "rho",
+      "capacity"
+    ],
+    "filtering_conditions": "maximum absolute_loss_difference",
+    "numeric_values": {
+      "absolute_loss_difference": 0.0006111416315867
+    }
+  },
+  {
+    "finding_id": "largest_policy_range",
+    "text": "The largest observed policy range was 0 at \u03c1=0.5, K=1, \u03b4=0.0001.",
+    "source_table": "paired_differences.parquet",
+    "source_columns": [
+      "absolute_policy_range",
+      "rho",
+      "capacity",
+      "delta"
+    ],
+    "filtering_conditions": "maximum absolute_policy_range",
+    "numeric_values": {
+      "absolute_policy_range": 0.0
+    }
+  },
+  {
+    "finding_id": "critical_predictor_r2",
+    "text": "The critical-collision predictor model had R\u00b2=nan.",
+    "source_table": "regression_results.csv",
+    "source_columns": [
+      "r_squared"
+    ],
+    "filtering_conditions": "model=C_critical_difference",
+    "numeric_values": {
+      "r_squared": NaN
+    }
+  }
+]

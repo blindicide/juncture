@@ -1,0 +1,3 @@
+| rho | capacity | delta | quantizer | n | mean_loss_gap_AF_DF | sd_loss_gap_AF_DF | median_loss_gap_AF_DF | iqr_loss_gap_AF_DF | bootstrap_ci95_low | bootstrap_ci95_high |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.8 | 4 | 0.01 | floor | 5.0 | 0.00041600000000000523 | 6.228964600959121e-05 | 0.00044000000000000983 | 0.00010000000000000286 | 0.00036800000000000445 | 0.0004600000000000076 |

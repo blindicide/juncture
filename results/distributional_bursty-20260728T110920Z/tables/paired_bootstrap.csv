@@ -1,0 +1,2 @@
+rho,capacity,delta,quantizer,n,mean_loss_gap_AF_DF,sd_loss_gap_AF_DF,median_loss_gap_AF_DF,iqr_loss_gap_AF_DF,bootstrap_ci95_low,bootstrap_ci95_high
+0.8,4,0.01,floor,5.0,0.0005400000000000016,0.0003036445290137729,0.0005799999999999972,0.00021999999999999797,0.00030780000000000293,0.000768000000000002

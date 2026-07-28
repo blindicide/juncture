@@ -1,0 +1,6 @@
+| model | n | r_squared | adjusted_r_squared | rmse | coefficient_const | standard_error_const | coefficient_total_collision_rate | standard_error_total_collision_rate | coefficient_mixed_collision_rate | standard_error_mixed_collision_rate | coefficient_critical_acceptance_difference_rate | standard_error_critical_acceptance_difference_rate |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A_total_collision | 5 | 0.2338068103224838 | -0.0215909195700214 | 5.795680239235418e-05 | -0.0018690794595605 | 0.0022923481569248 | 0.2043268413061158 | 0.21355284377056 |  |  |  |  |
+| B_mixed_collision | 5 | 0.6928720393266796 | 0.5904960524355729 | 3.6693991055646975e-05 | -0.0012238231292517 | 0.0005953454088686 |  |  | 0.2074829931972841 | 0.0797544707383757 |  |  |
+| C_critical_difference | 5 | 0.0248965343039672 | -0.3001379542613769 | 6.538236454588967e-05 | 0.0001939485359361 | 0.0004714192636684 |  |  |  |  | 0.1100266193433675 | 0.3975511772581281 |
+| D_adjusted | 5 |  |  |  |  |  |  |  |  |  |  |  |

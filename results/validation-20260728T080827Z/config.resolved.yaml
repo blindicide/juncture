@@ -1,0 +1,32 @@
+arrival_distribution:
+  cv: 1.0
+  name: exponential
+  shape: 2
+capacities:
+- 1
+- 4
+- 8
+- 16
+deltas:
+- 0.0001
+fine_delta_max: 0.003
+loads:
+- 0.5
+- 0.8
+- 0.95
+- 1.0
+- 1.1
+measured_arrivals: 200000
+name: validation
+policies:
+- departure_first
+quantizers:
+- floor
+replications: 20
+root_seed: 5356273382911726149
+service_distribution:
+  cv: 1.0
+  name: exponential
+  shape: 2
+service_rate: 1.0
+warmup_arrivals: 5000

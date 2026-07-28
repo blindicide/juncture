@@ -1,0 +1,5 @@
+model,n,r_squared,adjusted_r_squared,rmse,coefficient_const,standard_error_const,coefficient_total_collision_rate,standard_error_total_collision_rate,coefficient_mixed_collision_rate,standard_error_mixed_collision_rate,coefficient_critical_acceptance_difference_rate,standard_error_critical_acceptance_difference_rate
+A_total_collision,5,0.4572889268151359,0.2763852357535146,4.4299472238803547e-05,0.0020191431166153425,0.0011998041345538256,-0.1402739523040346,0.08822779087974479,,,,
+B_mixed_collision,5,0.004069750059794486,-0.32790699992027394,6.0010697244607045e-05,-6.478040540542281e-05,0.0015970051669282133,,,0.018581081081082838,0.16781892847222316,,
+C_critical_difference,5,0.28661730178797007,0.04882306905062683,5.0789682384661314e-05,-4.1020408163267335e-05,0.0001424306883889718,,,,,0.4693877551020457,0.42754439081553464
+D_adjusted,5,,,,,,,,,,,

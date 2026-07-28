@@ -1,0 +1,3 @@
+| rho | capacity | n | simulated_exact_loss | simulated_effective_throughput | theoretical_loss | theoretical_effective_throughput | absolute_loss_difference | relative_loss_difference |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.8 | 4 | 5 | 0.038944 | 0.768860177203544 | 0.1218467396477867 | 0.7025226082817706 | 0.0829027396477867 | 0.680385375 |

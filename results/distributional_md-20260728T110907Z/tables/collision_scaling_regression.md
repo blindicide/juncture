@@ -1,0 +1,2 @@
+| rho | capacity | n_deltas | intercept | scaling_exponent | standard_error | ci95_low | ci95_high | r_squared |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
