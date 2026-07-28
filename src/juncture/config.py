@@ -28,6 +28,7 @@ class CampaignConfig:
     arrival_distribution: DistributionSpec = field(default_factory=DistributionSpec)
     service_distribution: DistributionSpec = field(default_factory=DistributionSpec)
     fine_delta_max: float = 0.003
+    tie_repetitions: int = 1
 
     def validate(self) -> None:
         if not self.name:
@@ -38,7 +39,12 @@ class CampaignConfig:
             raise ValueError("capacities must be positive")
         if not self.deltas or any(x <= 0 for x in self.deltas):
             raise ValueError("deltas must be non-empty and positive")
-        if self.replications < 1 or self.warmup_arrivals < 0 or self.measured_arrivals < 1:
+        if (
+            self.replications < 1
+            or self.warmup_arrivals < 0
+            or self.measured_arrivals < 1
+            or self.tie_repetitions < 1
+        ):
             raise ValueError("invalid replication or arrival counts")
         allowed = {
             "departure_first",
@@ -82,6 +88,7 @@ def load_config(path: str | Path) -> CampaignConfig:
         arrival_distribution=_distribution(raw.get("arrival_distribution")),
         service_distribution=_distribution(raw.get("service_distribution")),
         fine_delta_max=float(raw.get("fine_delta_max", 0.003)),
+        tie_repetitions=int(raw.get("tie_repetitions", 1)),
     )
     config.validate()
     return config

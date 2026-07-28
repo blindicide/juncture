@@ -46,32 +46,36 @@ def task_manifest(config: CampaignConfig) -> pd.DataFrame:
                 for delta in config.deltas:
                     for quantizer in config.quantizers:
                         for policy in config.policies:
-                            tie_seed = derive_seed(
-                                config.name,
-                                replication,
-                                rho,
-                                capacity,
-                                delta,
-                                quantizer,
-                                policy,
-                                "tie",
-                                root_seed=config.root_seed,
-                            )
-                            task_id = f"quantized-{derive_seed(config.name, rho, capacity, replication, delta, quantizer, policy, root_seed=config.root_seed):016x}"
-                            records.append(
-                                {
-                                    "task_id": task_id,
-                                    "kind": "quantized",
-                                    "replication": replication,
-                                    "rho": rho,
-                                    "capacity": capacity,
-                                    "delta": delta,
-                                    "quantizer": quantizer,
-                                    "policy": policy,
-                                    "workload_seed": workload_seed,
-                                    "tie_seed": tie_seed,
-                                }
-                            )
+                            repetitions = config.tie_repetitions if policy == "random_order" else 1
+                            for tie_repeat in range(repetitions):
+                                repeated_tie_seed = derive_seed(
+                                    config.name,
+                                    replication,
+                                    rho,
+                                    capacity,
+                                    delta,
+                                    quantizer,
+                                    policy,
+                                    tie_repeat,
+                                    "tie",
+                                    root_seed=config.root_seed,
+                                )
+                                task_id = f"quantized-{derive_seed(config.name, rho, capacity, replication, delta, quantizer, policy, tie_repeat, root_seed=config.root_seed):016x}"
+                                records.append(
+                                    {
+                                        "task_id": task_id,
+                                        "kind": "quantized",
+                                        "replication": replication,
+                                        "rho": rho,
+                                        "capacity": capacity,
+                                        "delta": delta,
+                                        "quantizer": quantizer,
+                                        "policy": policy,
+                                        "tie_repeat": tie_repeat,
+                                        "workload_seed": workload_seed,
+                                        "tie_seed": repeated_tie_seed,
+                                    }
+                                )
     return pd.DataFrame(records).sort_values("task_id", kind="stable").reset_index(drop=True)
 
 

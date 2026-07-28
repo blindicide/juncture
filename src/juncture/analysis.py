@@ -166,9 +166,20 @@ def analyze_run(run_dir: Path) -> None:
                     "r_squared": fit.rvalue**2,
                 }
             )
-    pd.DataFrame(scaling_rows).to_csv(
-        run_dir / "derived" / "collision_scaling_regression.csv", index=False
-    )
+    pd.DataFrame(
+        scaling_rows,
+        columns=[
+            "rho",
+            "capacity",
+            "n_deltas",
+            "intercept",
+            "scaling_exponent",
+            "standard_error",
+            "ci95_low",
+            "ci95_high",
+            "r_squared",
+        ],
+    ).to_csv(run_dir / "derived" / "collision_scaling_regression.csv", index=False)
 
     validation = exact.groupby(["rho", "capacity"], as_index=False).agg(
         n=("packet_loss_probability", "size"),
