@@ -47,12 +47,13 @@ def fit_grouped_ols(
         train = usable.drop(index=held_out.index)
         if len(train) <= len(predictors) + 1:
             continue
-        fold = sm.OLS(train[outcome], sm.add_constant(train[predictors])).fit()
+        fold = sm.OLS(train[outcome], sm.add_constant(train[predictors], has_constant="add")).fit()
         predictions.loc[held_out.index] = fold.predict(sm.add_constant(held_out[predictors], has_constant="add"))
+    cv_errors = (usable[outcome] - predictions).dropna()
     result: dict[str, float | str] = {
         "model": name, "n": len(usable), "r_squared": float(fit.rsquared),
         "adjusted_r_squared": float(fit.rsquared_adj),
-        "cv_rmse": float(np.sqrt(np.nanmean((usable[outcome] - predictions) ** 2))),
+        "cv_rmse": float(np.sqrt(np.mean(cv_errors**2))) if len(cv_errors) else float("nan"),
         "uncertainty": "HC3", "folding": f"leave-{group}-out",
     }
     for key, value in fit.params.items():
