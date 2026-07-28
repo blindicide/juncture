@@ -8,3 +8,6 @@
 | `collision_event_fraction` | float | fraction | events in collided quantized ticks / processed events | zero in exact mode |
 | `critical_acceptance_difference_rate` | float | per arrival | shadow-policy acceptance difference / measured arrivals | zero if none |
 | `relative_packet_loss_error` | float | ratio | absolute quantized-exact loss / exact loss | null if exact loss is zero |
+# Phase II metric update
+
+Schema-v2 reports collision-event fraction as `measurement_collided_events / measurement_processed_events` and collided-tick fraction as `measurement_collided_ticks / measurement_processed_ticks`; a zero denominator is null, while a nonempty collision-free window is zero. Legacy collision fractions are not denominator-consistent.
