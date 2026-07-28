@@ -11,9 +11,11 @@ from typing import Any, cast
 import pandas as pd
 
 from .config import CampaignConfig
+from .identities import stable_id
 from .policies import OrderingPolicy
 from .provenance import collect_provenance
 from .quantization import Quantizer
+from .schema import RAW_SCHEMA_VERSION
 from .seeds import derive_seed
 from .simulator import simulate_exact, simulate_quantized
 from .storage import atomic_json, atomic_parquet, save_yaml
@@ -28,9 +30,25 @@ def task_manifest(config: CampaignConfig) -> pd.DataFrame:
                 workload_seed = derive_seed(
                     config.name, replication, rho, capacity, "workload", root_seed=config.root_seed
                 )
-                exact_id = f"exact-{derive_seed(config.name, rho, capacity, replication, 'exact', root_seed=config.root_seed):016x}"
-                records.append(
-                    {
+                scenario = {
+                    "arrival_distribution": config.arrival_distribution,
+                    "service_distribution": config.service_distribution,
+                    "service_rate": config.service_rate,
+                    "timestamp_semantics": "continuous" if config.schema_version == 1 else "quantized_tick_v2",
+                }
+                workload_identity = {
+                    "scenario": scenario,
+                    "campaign": config.name,
+                    "replication": replication,
+                    "rho": rho,
+                    "capacity": capacity,
+                    "warmup_arrivals": config.warmup_arrivals,
+                    "measured_arrivals": config.measured_arrivals,
+                    "workload_seed": workload_seed,
+                }
+                for scheduling_mode in config.arrival_scheduling_modes:
+                    exact_id = f"exact-{derive_seed(config.name, rho, capacity, replication, scheduling_mode, 'exact', root_seed=config.root_seed):016x}"
+                    exact_row = {
                         "task_id": exact_id,
                         "kind": "exact",
                         "replication": replication,
@@ -41,28 +59,39 @@ def task_manifest(config: CampaignConfig) -> pd.DataFrame:
                         "policy": "exact",
                         "workload_seed": workload_seed,
                         "tie_seed": 0,
+                        "quantization_seed": derive_seed(config.name, rho, capacity, replication, "quantization", root_seed=config.root_seed),
+                        "arrival_scheduling_mode": scheduling_mode,
                     }
-                )
-                for delta in config.deltas:
-                    for quantizer in config.quantizers:
-                        for policy in config.policies:
-                            repetitions = config.tie_repetitions if policy == "random_order" else 1
-                            for tie_repeat in range(repetitions):
-                                repeated_tie_seed = derive_seed(
-                                    config.name,
-                                    replication,
-                                    rho,
-                                    capacity,
-                                    delta,
-                                    quantizer,
-                                    policy,
-                                    tie_repeat,
-                                    "tie",
-                                    root_seed=config.root_seed,
-                                )
-                                task_id = f"quantized-{derive_seed(config.name, rho, capacity, replication, delta, quantizer, policy, tie_repeat, root_seed=config.root_seed):016x}"
-                                records.append(
-                                    {
+                    if config.schema_version >= 2:
+                        exact_row.update(
+                            {
+                                "raw_schema_version": RAW_SCHEMA_VERSION,
+                                "scenario_id": stable_id("scenario", {**scenario, "arrival_scheduling_mode": scheduling_mode}),
+                                "workload_id": stable_id("workload", workload_identity),
+                                "configuration_id": stable_id("configuration", {**scenario, "rho": rho, "capacity": capacity, "delta": None, "quantizer": None, "policy": "exact", "arrival_scheduling_mode": scheduling_mode}),
+                                "pair_id": stable_id("pair", {**workload_identity, "delta": None, "quantizer": None, "arrival_scheduling_mode": scheduling_mode}),
+                            }
+                        )
+                    records.append(exact_row)
+                    for delta in config.deltas:
+                        for quantizer in config.quantizers:
+                            for policy in config.policies:
+                                repetitions = config.tie_repetitions if policy == "random_order" else 1
+                                for tie_repeat in range(repetitions):
+                                    repeated_tie_seed = derive_seed(
+                                        config.name,
+                                        replication,
+                                        rho,
+                                        capacity,
+                                        delta,
+                                        quantizer,
+                                        policy,
+                                        tie_repeat,
+                                        "tie",
+                                        root_seed=config.root_seed,
+                                    )
+                                    task_id = f"quantized-{derive_seed(config.name, rho, capacity, replication, scheduling_mode, delta, quantizer, policy, tie_repeat, root_seed=config.root_seed):016x}"
+                                    row = {
                                         "task_id": task_id,
                                         "kind": "quantized",
                                         "replication": replication,
@@ -74,13 +103,25 @@ def task_manifest(config: CampaignConfig) -> pd.DataFrame:
                                         "tie_repeat": tie_repeat,
                                         "workload_seed": workload_seed,
                                         "tie_seed": repeated_tie_seed,
+                                        "quantization_seed": derive_seed(config.name, rho, capacity, replication, delta, quantizer, "quantization", root_seed=config.root_seed),
+                                        "arrival_scheduling_mode": scheduling_mode,
                                     }
-                                )
+                                    if config.schema_version >= 2:
+                                        row.update(
+                                            {
+                                            "raw_schema_version": RAW_SCHEMA_VERSION,
+                                            "scenario_id": stable_id("scenario", {**scenario, "arrival_scheduling_mode": scheduling_mode}),
+                                            "workload_id": stable_id("workload", workload_identity),
+                                            "configuration_id": stable_id("configuration", {**scenario, "rho": rho, "capacity": capacity, "delta": delta, "quantizer": quantizer, "policy": policy, "arrival_scheduling_mode": scheduling_mode}),
+                                            "pair_id": stable_id("pair", {**workload_identity, "delta": delta, "quantizer": quantizer, "arrival_scheduling_mode": scheduling_mode}),
+                                            }
+                                        )
+                                    records.append(row)
     return pd.DataFrame(records).sort_values("task_id", kind="stable").reset_index(drop=True)
 
 
 def create_run(config: CampaignConfig, root: Path) -> Path:
-    run_id = f"{config.name}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    run_id = f"{config.name}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}"
     run_dir = root / "results" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     for part in ("raw", "derived", "figures", "tables", "logs", "report"):
@@ -111,7 +152,10 @@ def _run_one(task: dict[str, Any], config_data: dict[str, Any]) -> dict[str, Any
     )
     if task["kind"] == "exact":
         result = simulate_exact(
-            workload, capacity=int(task["capacity"]), service_rate=config.service_rate
+            workload,
+            capacity=int(task["capacity"]),
+            service_rate=config.service_rate,
+            arrival_scheduling_mode=str(task.get("arrival_scheduling_mode", "preload_all")),
         )
     else:
         result = simulate_quantized(
@@ -122,6 +166,8 @@ def _run_one(task: dict[str, Any], config_data: dict[str, Any]) -> dict[str, Any
             quantizer=cast(Quantizer, task["quantizer"]),
             policy=cast(OrderingPolicy, task["policy"]),
             tie_seed=int(task["tie_seed"]),
+            quantization_seed=int(task.get("quantization_seed", 0)),
+            arrival_scheduling_mode=str(task.get("arrival_scheduling_mode", "preload_all")),
         )
     return {
         **task,
@@ -130,6 +176,7 @@ def _run_one(task: dict[str, Any], config_data: dict[str, Any]) -> dict[str, Any
         "mu": config.service_rate,
         "normalized_resolution": task["delta"],
         "root_seed": config.root_seed,
+        "raw_schema_version": int(task.get("raw_schema_version", 1)),
     }
 
 

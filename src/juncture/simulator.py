@@ -28,6 +28,7 @@ class Job:
     accepted: bool = False
     service_start: float | None = None
     departure_time: float | None = None
+    arrival_quantization_error: float = 0.0
 
 
 @dataclass
@@ -57,6 +58,10 @@ class Measurement:
     start_time: float | None = None
     end_arrival_time: float | None = None
     collisions: CollisionCounters = field(default_factory=CollisionCounters)
+    processed_events: int = 0
+    processed_ticks: int = 0
+    arrival_errors: list[float] = field(default_factory=list)
+    service_errors: list[float] = field(default_factory=list)
 
 
 def _quantile(values: list[float], q: float) -> float | None:
@@ -77,6 +82,8 @@ class QueueSimulator:
         quantizer: Quantizer = "floor",
         policy: OrderingPolicy = "departure_first",
         tie_seed: int = 0,
+        quantization_seed: int = 0,
+        arrival_scheduling_mode: str = "preload_all",
         debug: bool = False,
         max_events: int | None = None,
     ) -> None:
@@ -97,6 +104,14 @@ class QueueSimulator:
         self.max_events = max_events or max(1000, 20 * workload.total_arrivals + 1000)
         self.rng = np.random.default_rng(tie_seed)
         self.tie_seed = tie_seed
+        self.quantization_seed = quantization_seed
+        self.arrival_scheduling_mode = arrival_scheduling_mode
+        if arrival_scheduling_mode not in {
+            "preload_all",
+            "schedule_next_after_transition",
+            "schedule_next_before_transition",
+        }:
+            raise ValueError("unknown arrival scheduling mode")
         self.queue: list[tuple[tuple[Any, ...], Event]] = []
         self.sequence = 0
         self.jobs: dict[int, Job] = {}
@@ -110,6 +125,7 @@ class QueueSimulator:
         self.processed_events = 0
         self._active_tick: float | int | None = None
         self._same_tick_heap: list[tuple[tuple[Any, ...], Event]] | None = None
+        self._measurement_ended = False
 
     def _clock(self, value: float) -> float:
         if self.exact:
@@ -148,13 +164,31 @@ class QueueSimulator:
 
     def _schedule_initial_arrivals(self) -> None:
         delta = self.delta
-        for job_id, arrival in enumerate(self.workload.arrival_times):
+        arrival_ids = range(self.workload.total_arrivals)
+        if self.arrival_scheduling_mode != "preload_all":
+            arrival_ids = range(min(1, self.workload.total_arrivals))
+        for job_id in arrival_ids:
+            arrival = self.workload.arrival_times[job_id]
             if self.exact:
                 moment = arrival
             else:
                 assert delta is not None
                 moment = float(quantize(arrival, delta, self.quantizer))
             self._push(moment, float(arrival), "arrival", job_id)
+
+    def _schedule_next_arrival(self, job_id: int) -> None:
+        """Schedule the predetermined next arrival for incremental architectures."""
+        next_id = job_id + 1
+        if self.arrival_scheduling_mode == "preload_all" or next_id >= self.workload.total_arrivals:
+            return
+        arrival = float(self.workload.arrival_times[next_id])
+        moment: float | int
+        if self.exact:
+            moment = arrival
+        else:
+            assert self.delta is not None
+            moment = float(quantize(arrival, self.delta, self.quantizer))
+        self._push(moment, arrival, "arrival", next_id)
 
     def _update_integrals(self, clock: float) -> None:
         if not self.collecting_time:
@@ -227,7 +261,7 @@ class QueueSimulator:
 
     def _record_event_collision(self, batch: list[Event]) -> None:
         """Record all events processed at a tick, including recursive completions."""
-        if self.exact or not self.measurement_started or len(batch) < 2:
+        if self.exact or not self.measurement_started or self._measurement_ended or len(batch) < 2:
             return
         counters = self.measurement.collisions
         counters.collided_ticks += 1
@@ -259,6 +293,8 @@ class QueueSimulator:
 
     def _arrival(self, event: Event, clock: float) -> None:
         job_id = event.job_id
+        if self.arrival_scheduling_mode == "schedule_next_before_transition":
+            self._schedule_next_arrival(job_id)
         measured = job_id >= self.workload.warmup_arrivals
         job = Job(
             job_id,
@@ -266,6 +302,7 @@ class QueueSimulator:
             clock,
             float(self.workload.service_requirements[job_id]),
             measured,
+            arrival_quantization_error=clock - event.raw_time,
         )
         self.jobs[job_id] = job
         if self.jobs_in_system < self.capacity:
@@ -279,12 +316,13 @@ class QueueSimulator:
                 self.waiting.append(job_id)
         elif measured:
             self.measurement.dropped += 1
-        if measured and job_id == self.workload.total_arrivals - 1:
-            self.measurement.end_arrival_time = clock
-            self.collecting_time = False
+        if measured:
+            self.measurement.arrival_errors.append(job.arrival_quantization_error)
         self.measurement.max_queue_length = max(
             self.measurement.max_queue_length, len(self.waiting)
         )
+        if self.arrival_scheduling_mode == "schedule_next_after_transition":
+            self._schedule_next_arrival(job_id)
 
     def _departure(self, event: Event, clock: float) -> None:
         job = self.jobs[event.job_id]
@@ -298,6 +336,9 @@ class QueueSimulator:
             assert job.service_start is not None
             self.measurement.wait_times.append(job.service_start - job.arrival_time)
             self.measurement.sojourn_times.append(clock - job.arrival_time)
+            self.measurement.service_errors.append(
+                (clock - job.service_start) - job.service_requirement
+            )
         if self.waiting:
             self._start_service(self.waiting.popleft(), clock)
 
@@ -337,7 +378,19 @@ class QueueSimulator:
                 if self.debug:
                     self._assert_invariants()
                 processed_at_tick.append(event)
+            if self.measurement_started and not self._measurement_ended:
+                # The boundary is a *complete* batch: records include initial and recursive events.
+                self.measurement.processed_events += len(processed_at_tick)
+                self.measurement.processed_ticks += 1
             self._record_event_collision(processed_at_tick)
+            if any(
+                event.event_type == "arrival"
+                and event.job_id == self.workload.total_arrivals - 1
+                for event in processed_at_tick
+            ):
+                self.measurement.end_arrival_time = clock
+                self.collecting_time = False
+                self._measurement_ended = True
             self._same_tick_heap = None
             self._active_tick = None
         if self.jobs_in_system != 0 or self.in_service is not None:
@@ -353,7 +406,28 @@ class QueueSimulator:
             else 0.0
         )
         collision = m.collisions
-        events_seen = max(1, self.processed_events)
+        events_seen = m.processed_events
+        ticks_seen = m.processed_ticks
+        def error_summary(prefix: str, values: list[float]) -> dict[str, float | None]:
+            if not values:
+                return {f"{prefix}_{name}": None for name in (
+                    "signed_mean", "absolute_mean", "median", "p05", "p95", "minimum", "maximum",
+                    "zero_fraction", "shortened_fraction", "lengthened_fraction", "accumulated_signed_error",
+                )}
+            array = np.asarray(values, dtype=float)
+            return {
+                f"{prefix}_signed_mean": float(array.mean()),
+                f"{prefix}_absolute_mean": float(np.abs(array).mean()),
+                f"{prefix}_median": float(np.median(array)),
+                f"{prefix}_p05": float(np.quantile(array, .05)),
+                f"{prefix}_p95": float(np.quantile(array, .95)),
+                f"{prefix}_minimum": float(array.min()),
+                f"{prefix}_maximum": float(array.max()),
+                f"{prefix}_zero_fraction": float(np.mean(np.isclose(array, 0.0, atol=1e-12))),
+                f"{prefix}_shortened_fraction": float(np.mean(array < -1e-12)),
+                f"{prefix}_lengthened_fraction": float(np.mean(array > 1e-12)),
+                f"{prefix}_accumulated_signed_error": float(array.sum()),
+            }
         result: dict[str, Any] = {
             "mode": "exact" if self.exact else "quantized",
             "capacity": self.capacity,
@@ -361,6 +435,8 @@ class QueueSimulator:
             "quantizer": None if self.exact else self.quantizer,
             "ordering_policy": "exact" if self.exact else self.policy,
             "tie_seed": self.tie_seed,
+            "quantization_seed": self.quantization_seed,
+            "arrival_scheduling_mode": self.arrival_scheduling_mode,
             "workload_seed": self.workload.seed,
             "warmup_arrivals": self.workload.warmup_arrivals,
             "measured_arrivals": measured,
@@ -382,30 +458,51 @@ class QueueSimulator:
             "maximum_queue_length": m.max_queue_length,
             "fraction_time_full": m.full_area / duration if duration > 0 else None,
             "fraction_time_idle": m.idle_area / duration if duration > 0 else None,
-            "collided_ticks": collision.collided_ticks,
-            "collision_event_count": collision.collision_event_count,
-            "collision_event_fraction": collision.collision_event_count / events_seen,
+            "measurement_processed_events": events_seen,
+            "measurement_processed_ticks": ticks_seen,
+            "measurement_collided_events": collision.collision_event_count,
+            "measurement_collided_ticks": collision.collided_ticks,
+            "measurement_mixed_collided_ticks": collision.mixed_collided_ticks,
+            "measurement_critical_collided_ticks": collision.critical_collided_ticks,
+            "measurement_maximum_batch_size": collision.maximum_batch_size,
+            "collision_event_fraction": collision.collision_event_count / events_seen if events_seen else None,
+            "collided_tick_fraction": collision.collided_ticks / ticks_seen if ticks_seen else None,
             "mixed_collided_ticks": collision.mixed_collided_ticks,
-            "mixed_collision_rate": collision.mixed_collided_ticks / measured,
+            "mixed_collision_rate": collision.mixed_collided_ticks / ticks_seen if ticks_seen else None,
             "critical_collided_ticks": collision.critical_collided_ticks,
             "critical_acceptance_difference": collision.critical_acceptance_difference,
             "critical_acceptance_difference_rate": collision.critical_acceptance_difference
-            / measured,
+            / ticks_seen if ticks_seen else None,
             "maximum_batch_size": collision.maximum_batch_size,
             "processed_events": self.processed_events,
             "simulation_runtime_seconds": runtime,
             "engine_version": ENGINE_VERSION,
         }
+        result.update(error_summary("arrival_quantization_error", m.arrival_errors))
+        result.update(error_summary("service_quantization_error", m.service_errors))
+        # Compatibility aliases remain only for newly-created rows; analysis knows schema version.
+        result["collided_ticks"] = collision.collided_ticks
+        result["collision_event_count"] = collision.collision_event_count
         if m.accepted + m.dropped != measured:
             raise RuntimeError("measurement arrival accounting invariant violated")
         return result
 
 
 def simulate_exact(
-    workload: Workload, *, capacity: int, service_rate: float = 1.0, debug: bool = False
+    workload: Workload,
+    *,
+    capacity: int,
+    service_rate: float = 1.0,
+    arrival_scheduling_mode: str = "preload_all",
+    debug: bool = False,
 ) -> dict[str, Any]:
     return QueueSimulator(
-        workload, capacity=capacity, service_rate=service_rate, exact=True, debug=debug
+        workload,
+        capacity=capacity,
+        service_rate=service_rate,
+        exact=True,
+        arrival_scheduling_mode=arrival_scheduling_mode,
+        debug=debug,
     ).run()
 
 
@@ -418,6 +515,8 @@ def simulate_quantized(
     quantizer: Quantizer = "floor",
     policy: OrderingPolicy = "departure_first",
     tie_seed: int = 0,
+    quantization_seed: int = 0,
+    arrival_scheduling_mode: str = "preload_all",
     debug: bool = False,
 ) -> dict[str, Any]:
     return QueueSimulator(
@@ -429,5 +528,7 @@ def simulate_quantized(
         quantizer=quantizer,
         policy=policy,
         tie_seed=tie_seed,
+        quantization_seed=quantization_seed,
+        arrival_scheduling_mode=arrival_scheduling_mode,
         debug=debug,
     ).run()

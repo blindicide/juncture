@@ -29,6 +29,8 @@ class CampaignConfig:
     service_distribution: DistributionSpec = field(default_factory=DistributionSpec)
     fine_delta_max: float = 0.003
     tie_repetitions: int = 1
+    schema_version: int = 1
+    arrival_scheduling_modes: list[str] = field(default_factory=lambda: ["preload_all"])
 
     def validate(self) -> None:
         if not self.name:
@@ -57,6 +59,15 @@ class CampaignConfig:
             raise ValueError("unknown ordering policy")
         if not set(self.quantizers) <= {"floor", "nearest", "ceiling"}:
             raise ValueError("unknown quantizer")
+        if self.schema_version not in {1, 2}:
+            raise ValueError("schema_version must be 1 or 2")
+        allowed_scheduling = {
+            "preload_all",
+            "schedule_next_after_transition",
+            "schedule_next_before_transition",
+        }
+        if not self.arrival_scheduling_modes or not set(self.arrival_scheduling_modes) <= allowed_scheduling:
+            raise ValueError("unknown arrival scheduling mode")
 
     def resolved(self) -> dict[str, Any]:
         return asdict(self)
@@ -89,6 +100,8 @@ def load_config(path: str | Path) -> CampaignConfig:
         service_distribution=_distribution(raw.get("service_distribution")),
         fine_delta_max=float(raw.get("fine_delta_max", 0.003)),
         tie_repetitions=int(raw.get("tie_repetitions", 1)),
+        schema_version=int(raw.get("schema_version", 1)),
+        arrival_scheduling_modes=list(raw.get("arrival_scheduling_modes", ["preload_all"])),
     )
     config.validate()
     return config
