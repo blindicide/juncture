@@ -1,0 +1,12 @@
+name: collision-scaling-v2
+schema_version: 2
+loads: [0.8, 1.0, 1.1]
+capacities: [8]
+deltas: [0.00001, 0.00003, 0.0001, 0.0003, 0.001, 0.003, 0.01]
+quantizers: [floor]
+policies: [departure_first, arrival_first]
+arrival_scheduling_modes: [preload_all]
+replications: 30
+warmup_arrivals: 5000
+measured_arrivals: 50000
+fine_delta_max: 0.003

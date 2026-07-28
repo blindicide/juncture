@@ -54,9 +54,29 @@ def _validate(_: argparse.Namespace) -> int:
 
 
 def _analyze(args: argparse.Namespace) -> int:
-    from .analysis import analyze_run
+    from .analysis_v2 import analyze_run_v2
 
-    analyze_run(Path(args.run_dir))
+    created = analyze_run_v2(Path(args.run_dir), Path(args.analysis_config) if args.analysis_config else None)
+    print(created)
+    return 0
+
+
+def _verify_run(args: argparse.Namespace) -> int:
+    import json
+
+    from .verification import verify_run
+
+    outcome = verify_run(Path(args.run_dir))
+    print(json.dumps(outcome, indent=2, sort_keys=True))
+    return 0 if outcome["ok"] else 1
+
+
+def _compare_baseline(args: argparse.Namespace) -> int:
+    import json
+
+    from .verification import compare_baseline
+
+    print(json.dumps(compare_baseline(Path(args.left_run_dir), Path(args.right_run_dir)), indent=2))
     return 0
 
 
@@ -97,7 +117,15 @@ def main(argv: list[str] | None = None) -> int:
     status.set_defaults(func=_status)
     analyze = commands.add_parser("analyze")
     analyze.add_argument("--run-dir", required=True)
+    analyze.add_argument("--analysis-config")
     analyze.set_defaults(func=_analyze)
+    verify = commands.add_parser("verify-run")
+    verify.add_argument("--run-dir", required=True)
+    verify.set_defaults(func=_verify_run)
+    baseline = commands.add_parser("compare-baseline")
+    baseline.add_argument("--left-run-dir", required=True)
+    baseline.add_argument("--right-run-dir", required=True)
+    baseline.set_defaults(func=_compare_baseline)
     plot = commands.add_parser("plot")
     plot.add_argument("--run-dir", required=True)
     plot.add_argument("--language", choices=["en", "ru"], default="en")
