@@ -1,0 +1,29 @@
+[
+  {
+    "finding_id": "largest_policy_range",
+    "text": "The largest observed policy range was 0.003 at \u03c1=0.8, K=1, \u03b4=0.01.",
+    "source_table": "paired_differences.parquet",
+    "source_columns": [
+      "absolute_policy_range",
+      "rho",
+      "capacity",
+      "delta"
+    ],
+    "filtering_conditions": "maximum absolute_policy_range",
+    "numeric_values": {
+      "absolute_policy_range": 0.0030000000000000027
+    }
+  },
+  {
+    "finding_id": "critical_predictor_r2",
+    "text": "The critical-collision predictor model had R\u00b2=0.663.",
+    "source_table": "regression_results.csv",
+    "source_columns": [
+      "r_squared"
+    ],
+    "filtering_conditions": "model=C_critical_difference",
+    "numeric_values": {
+      "r_squared": 0.6625420350643523
+    }
+  }
+]
