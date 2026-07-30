@@ -120,6 +120,11 @@ def task_manifest(config: CampaignConfig) -> pd.DataFrame:
     return pd.DataFrame(records).sort_values("task_id", kind="stable").reset_index(drop=True)
 
 
+def planned_task_count(config: CampaignConfig) -> int:
+    """Return the deterministic task count before creating a run directory."""
+    return len(task_manifest(config))
+
+
 def create_run(config: CampaignConfig, root: Path) -> Path:
     run_id = f"{config.name}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}"
     run_dir = root / "results" / run_id

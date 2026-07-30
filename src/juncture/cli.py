@@ -5,12 +5,18 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .campaign import create_run, execute_run, run_status
+from .campaign import create_run, execute_run, planned_task_count, run_status
 from .config import load_config
 
 
 def _run(args: argparse.Namespace) -> int:
     config = load_config(args.config)
+    count = planned_task_count(config)
+    print(f"planned_tasks: {count}")
+    if count > args.large_run_limit and not args.confirm_large_run:
+        raise ValueError(
+            f"planned task count {count} exceeds {args.large_run_limit}; use --confirm-large-run"
+        )
     run_dir = create_run(config, Path.cwd())
     execute_run(run_dir, workers=args.workers)
     print(run_dir)
@@ -123,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run")
     run.add_argument("--config", required=True)
     run.add_argument("--workers", type=int, default=1)
+    run.add_argument("--large-run-limit", type=int, default=100_000)
+    run.add_argument("--confirm-large-run", action="store_true")
     run.set_defaults(func=_run)
     resume = commands.add_parser("resume")
     resume.add_argument("--run-dir", required=True)
