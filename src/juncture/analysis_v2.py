@@ -18,6 +18,7 @@ import pandas as pd
 import yaml
 
 from .bootstrap import paired_bootstrap_ci
+from .metrics_v2 import collision_rates
 from .provenance import collect_provenance
 from .regression import fit_grouped_ols
 from .schema import ANALYSIS_SCHEMA_VERSION
@@ -354,6 +355,27 @@ def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
         q = quantized.copy()
         q["legacy_collision_event_fraction"] = q.get("collision_event_fraction")
         q["collision_denominator_consistent"] = False
+        counts = {
+            "measured_arrivals",
+            "mixed_collided_ticks",
+            "critical_collided_ticks",
+            "critical_acceptance_difference",
+        }
+        if counts.issubset(q.columns):
+            reconstructed = q.apply(
+                lambda row: collision_rates(
+                    int(row.measured_arrivals),
+                    int(row.get("measurement_processed_ticks", 0)),
+                    int(row.mixed_collided_ticks),
+                    int(row.critical_collided_ticks),
+                    int(row.critical_acceptance_difference),
+                    legacy=True,
+                ),
+                axis=1,
+            )
+            q = pd.concat([q, pd.DataFrame(reconstructed.tolist())], axis=1)
+        else:
+            q["rate_reconstructed_from_counts"] = False
         atomic_parquet(q, target / "derived" / "legacy_quantized.parquet")
         _theory_metadata(run_dir, exact).to_csv(target / "derived" / "theory_validation.csv", index=False)
         return target

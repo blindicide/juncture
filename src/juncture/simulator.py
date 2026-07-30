@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from .events import Event
+from .metrics_v2 import collision_rates
 from .policies import OrderingPolicy, type_priority
 from .quantization import Quantizer, quantize
 from .workload import Workload
@@ -469,6 +470,7 @@ class QueueSimulator:
             "fraction_time_idle": m.idle_area / duration if duration > 0 else None,
             "measurement_processed_events": events_seen,
             "measurement_processed_ticks": ticks_seen,
+            "measurement_start_tick": m.start_tick,
             "measurement_collided_events": collision.collision_event_count,
             "measurement_collided_ticks": collision.collided_ticks,
             "measurement_mixed_collided_ticks": collision.mixed_collided_ticks,
@@ -477,16 +479,26 @@ class QueueSimulator:
             "collision_event_fraction": collision.collision_event_count / events_seen if events_seen else None,
             "collided_tick_fraction": collision.collided_ticks / ticks_seen if ticks_seen else None,
             "mixed_collided_ticks": collision.mixed_collided_ticks,
-            "mixed_collision_rate": collision.mixed_collided_ticks / ticks_seen if ticks_seen else None,
             "critical_collided_ticks": collision.critical_collided_ticks,
             "critical_acceptance_difference": collision.critical_acceptance_difference,
-            "critical_acceptance_difference_rate": collision.critical_acceptance_difference
-            / ticks_seen if ticks_seen else None,
             "maximum_batch_size": collision.maximum_batch_size,
             "processed_events": self.processed_events,
             "simulation_runtime_seconds": runtime,
             "engine_version": ENGINE_VERSION,
         }
+        rates = collision_rates(
+            measured,
+            ticks_seen,
+            collision.mixed_collided_ticks,
+            collision.critical_collided_ticks,
+            collision.critical_acceptance_difference,
+        )
+        result.update(rates)
+        # Schema-v2 compatibility aliases: both are explicitly per-arrival rates.
+        result["mixed_collision_rate"] = rates["mixed_collision_rate_per_arrival"]
+        result["critical_acceptance_difference_rate"] = rates[
+            "critical_acceptance_difference_rate_per_arrival"
+        ]
         result.update(error_summary("arrival_quantization_error", m.arrival_errors))
         result.update(error_summary("service_quantization_error", m.service_errors))
         # Compatibility aliases remain only for newly-created rows; analysis knows schema version.
