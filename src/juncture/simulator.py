@@ -56,6 +56,7 @@ class Measurement:
     idle_area: float = 0.0
     max_queue_length: int = 0
     start_time: float | None = None
+    start_tick: float | int | None = None
     end_arrival_time: float | None = None
     collisions: CollisionCounters = field(default_factory=CollisionCounters)
     processed_events: int = 0
@@ -126,6 +127,7 @@ class QueueSimulator:
         self._active_tick: float | int | None = None
         self._same_tick_heap: list[tuple[tuple[Any, ...], Event]] | None = None
         self._measurement_ended = False
+        self._final_measurement_arrival_seen = False
 
     def _clock(self, value: float) -> float:
         if self.exact:
@@ -207,8 +209,8 @@ class QueueSimulator:
             m.idle_area += (self.jobs_in_system == 0) * elapsed
         self.last_clock = clock
 
-    def _reset_measurement(self, clock: float) -> None:
-        self.measurement = Measurement(start_time=clock)
+    def _reset_measurement(self, clock: float, tick: float) -> None:
+        self.measurement = Measurement(start_time=clock, start_tick=tick)
         self.measurement_started = True
         self.collecting_time = True
         self.last_clock = clock
@@ -318,6 +320,8 @@ class QueueSimulator:
             self.measurement.dropped += 1
         if measured:
             self.measurement.arrival_errors.append(job.arrival_quantization_error)
+        if job_id == self.workload.total_arrivals - 1:
+            self._final_measurement_arrival_seen = True
         self.measurement.max_queue_length = max(
             self.measurement.max_queue_length, len(self.waiting)
         )
@@ -353,13 +357,12 @@ class QueueSimulator:
             while self.queue and self.queue[0][1].time == current:
                 batch.append(heapq.heappop(self.queue)[1])
             clock = self._clock(current)
-            if not self.measurement_started and any(
-                e.event_type == "arrival" and e.job_id >= self.workload.warmup_arrivals
-                for e in batch
-            ):
-                self._reset_measurement(clock)
             self._update_integrals(clock)
-            self._record_static_criticality(batch)
+            critical_difference = (
+                self._shadow_difference(self.jobs_in_system, self.capacity, batch)
+                if not self.exact
+                else 0
+            )
             # Newly scheduled events at this tick join the active local heap, so a sub-quantum
             # service completion is ordered under the same policy as the events that caused it.
             self._active_tick = current
@@ -369,6 +372,12 @@ class QueueSimulator:
             while self._same_tick_heap:
                 _, event = heapq.heappop(self._same_tick_heap)
                 if event.event_type == "arrival":
+                    if (
+                        not self.measurement_started
+                        and event.job_id >= self.workload.warmup_arrivals
+                    ):
+                        # The event can have been recursively inserted into this active tick.
+                        self._reset_measurement(clock, current)
                     self._arrival(event, clock)
                 else:
                     self._departure(event, clock)
@@ -382,12 +391,12 @@ class QueueSimulator:
                 # The boundary is a *complete* batch: records include initial and recursive events.
                 self.measurement.processed_events += len(processed_at_tick)
                 self.measurement.processed_ticks += 1
+                if critical_difference:
+                    counters = self.measurement.collisions
+                    counters.critical_collided_ticks += 1
+                    counters.critical_acceptance_difference += critical_difference
             self._record_event_collision(processed_at_tick)
-            if any(
-                event.event_type == "arrival"
-                and event.job_id == self.workload.total_arrivals - 1
-                for event in processed_at_tick
-            ):
+            if self._final_measurement_arrival_seen:
                 self.measurement.end_arrival_time = clock
                 self.collecting_time = False
                 self._measurement_ended = True
