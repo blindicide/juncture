@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from juncture.analysis_v2 import _paired
-from juncture.campaign import task_manifest
+from juncture.analysis_v2 import _paired, analyze_run_v2
+from juncture.campaign import create_run, execute_run, task_manifest
 from juncture.config import CampaignConfig
 from juncture.metrics_v2 import collision_rates
 from juncture.simulator import simulate_quantized
@@ -97,6 +97,7 @@ def test_recursive_incremental_measurement_boundary_is_started_once() -> None:
         arrival_scheduling_mode="schedule_next_after_transition",
     )
     assert result["measurement_processed_ticks"] == 1
+    assert result["measurement_start_tick"] == 0.0
     assert result["accepted_arrivals"] + result["dropped_arrivals"] == 2
 
 
@@ -108,6 +109,18 @@ def test_measurement_accounting_holds_for_all_boundary_modes(policy: str, mode: 
         workload, capacity=1, delta=1.0, policy=policy, arrival_scheduling_mode=mode,
     )
     assert result["accepted_arrivals"] + result["dropped_arrivals"] == 2
+
+
+def test_boundary_tick_is_identical_for_explicit_and_insertion_policies() -> None:
+    workload = Workload(np.array([0.1, 0.2, 0.3]), np.array([0.1, 0.1, 0.1]), 1, 8)
+    starts = {
+        policy: simulate_quantized(
+            workload, capacity=1, delta=1.0, policy=policy,
+            arrival_scheduling_mode="schedule_next_after_transition",
+        )["measurement_start_tick"]
+        for policy in ("arrival_first", "departure_first", "insertion_order")
+    }
+    assert set(starts.values()) == {0.0}
 
 
 def test_collision_rate_denominators_and_zero_handling() -> None:
@@ -128,3 +141,17 @@ def test_collision_rate_denominators_and_zero_handling() -> None:
 def test_legacy_rate_reconstruction_from_counts() -> None:
     row = collision_rates(100, 160, 5, 3, 2, legacy=True)
     assert row["rate_reconstructed_from_counts"] is True
+
+
+def test_smoke_shape_analysis_has_non_null_exact_references(tmp_path) -> None:
+    config = CampaignConfig(
+        name="join-smoke", schema_version=2, loads=[0.8], capacities=[4], deltas=[0.01, 0.1],
+        quantizers=["floor"], policies=["arrival_first", "departure_first"],
+        arrival_scheduling_modes=["preload_all", "schedule_next_after_transition"],
+        replications=2, warmup_arrivals=2, measured_arrivals=20,
+    )
+    run_dir = create_run(config, tmp_path)
+    execute_run(run_dir, checkpoint_size=1)
+    analysis = analyze_run_v2(run_dir)
+    paired = pd.read_parquet(analysis / "derived" / "paired_bias_decomposition.parquet")
+    assert paired.exact_packet_loss.notna().all()
