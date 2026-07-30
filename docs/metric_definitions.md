@@ -11,3 +11,5 @@
 # Phase II metric update
 
 Schema-v2 reports collision-event fraction as `measurement_collided_events / measurement_processed_events` and collided-tick fraction as `measurement_collided_ticks / measurement_processed_ticks`; a zero denominator is null, while a nonempty collision-free window is zero. Legacy collision fractions are not denominator-consistent.
+
+Mixed and critical `_per_arrival` rates use `measured_arrivals` as their denominator: mixed ticks, critical ticks, and critical acceptance difference respectively. `mixed_collided_tick_fraction` and `critical_collided_tick_fraction` instead use `measurement_processed_ticks`. The schema-v2 compatibility aliases `mixed_collision_rate` and `critical_acceptance_difference_rate` are per-arrival rates; schema-1 values are never silently reinterpreted.
