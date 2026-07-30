@@ -126,11 +126,11 @@ def _theory_metadata(run_dir: Path, exact: pd.DataFrame) -> pd.DataFrame:
 
 
 def _paired(quantized: pd.DataFrame, exact: pd.DataFrame) -> pd.DataFrame:
-    required = {"pair_id", "arrival_scheduling_mode"}
+    required = {"pair_id", "workload_id", "arrival_scheduling_mode"}
     if not required <= set(quantized.columns):
         return _empty(["legacy_analysis", "legacy_collision_event_fraction"])
-    key = ["pair_id", "arrival_scheduling_mode"]
-    references = exact.groupby(key, as_index=False).first()
+    pair_key = ["pair_id", "arrival_scheduling_mode"]
+    reference_key = ["workload_id", "arrival_scheduling_mode"]
     metrics = [
         "packet_loss_probability",
         "throughput",
@@ -138,17 +138,30 @@ def _paired(quantized: pd.DataFrame, exact: pd.DataFrame) -> pd.DataFrame:
         "mean_sojourn_time",
         "time_average_number_in_system",
     ]
-    deterministic = quantized[quantized.policy.isin(["arrival_first", "departure_first"])]
-    values = deterministic.pivot_table(index=key, columns="policy", values=metrics, aggfunc="first")
-    if values.empty or "arrival_first" not in values.columns.get_level_values(1):
-        return _empty(key)
-    values.columns = [f"{policy}_{metric}" for metric, policy in values.columns]
-    result = values.reset_index().merge(
-        references[key + [metric for metric in metrics if metric in references]], on=key, how="left"
+    if not set(reference_key).issubset(exact.columns):
+        raise ValueError("exact reference rows lack workload identity")
+    if exact.duplicated(reference_key).any():
+        raise ValueError("duplicate exact references for workload identity")
+    references = exact[reference_key + [metric for metric in metrics if metric in exact]].rename(
+        columns={metric: f"exact_{metric}" for metric in metrics if metric in exact}
     )
-    detail = deterministic.groupby(key, as_index=False).first()
-    keep = [column for column in ("rho", "capacity", "delta", "quantizer", "workload_id", "replication") if column in detail]
-    result = result.merge(detail[key + keep], on=key, how="left")
+    deterministic = quantized[quantized.policy.isin(["arrival_first", "departure_first"])]
+    values = deterministic.pivot_table(
+        index=pair_key, columns="policy", values=metrics, aggfunc="first"
+    )
+    if values.empty or "arrival_first" not in values.columns.get_level_values(1):
+        return _empty(pair_key)
+    values.columns = [f"{policy}_{metric}" for metric, policy in values.columns]
+    detail = deterministic.groupby(pair_key, as_index=False).first()
+    keep = [
+        column
+        for column in ("rho", "capacity", "delta", "quantizer", "workload_id", "replication")
+        if column in detail
+    ]
+    result = values.reset_index().merge(detail[pair_key + keep], on=pair_key, how="left")
+    result = result.merge(references, on=reference_key, how="left", validate="many_to_one")
+    if result[[f"exact_{metric}" for metric in metrics if f"exact_{metric}" in result]].isna().any(axis=None):
+        raise ValueError("missing exact reference for completed quantized pair")
     for metric in metrics:
         af = f"arrival_first_{metric}"
         df = f"departure_first_{metric}"
@@ -159,8 +172,9 @@ def _paired(quantized: pd.DataFrame, exact: pd.DataFrame) -> pd.DataFrame:
         result[f"signed_{metric}_gap"] = gap
         result[f"absolute_{metric}_gap"] = gap.abs()
         result[f"deterministic_midpoint_{metric}"] = midpoint
-        if metric in result:
-            bias = midpoint - result[metric]
+        exact_metric = f"exact_{metric}"
+        if exact_metric in result:
+            bias = midpoint - result[exact_metric]
             result[f"midpoint_signed_bias_{metric}"] = bias
             result[f"midpoint_absolute_bias_{metric}"] = bias.abs()
             half_width = gap.abs() / 2
@@ -172,9 +186,20 @@ def _paired(quantized: pd.DataFrame, exact: pd.DataFrame) -> pd.DataFrame:
                 gap.abs() != 0, bias.abs() / gap.abs(), np.nan
             )
             result[f"exact_inside_deterministic_interval_{metric}"] = (
-                (result[metric] >= result[[af, df]].min(axis=1))
-                & (result[metric] <= result[[af, df]].max(axis=1))
+                (result[exact_metric] >= result[[af, df]].min(axis=1))
+                & (result[exact_metric] <= result[[af, df]].max(axis=1))
             )
+    # Compact loss aliases are the public Phase II.1 contract.
+    result["exact_packet_loss"] = result["exact_packet_loss_probability"]
+    result["policy_midpoint_loss"] = result["deterministic_midpoint_packet_loss_probability"]
+    result["midpoint_signed_bias"] = result["midpoint_signed_bias_packet_loss_probability"]
+    result["midpoint_absolute_bias"] = result["midpoint_absolute_bias_packet_loss_probability"]
+    result["signed_policy_gap"] = result["signed_packet_loss_probability_gap"]
+    result["absolute_policy_gap"] = result["absolute_packet_loss_probability_gap"]
+    result["ordering_half_width"] = result["ordering_half_width_packet_loss_probability"]
+    result["exact_inside_deterministic_interval"] = result[
+        "exact_inside_deterministic_interval_packet_loss_probability"
+    ]
     return result
 
 
