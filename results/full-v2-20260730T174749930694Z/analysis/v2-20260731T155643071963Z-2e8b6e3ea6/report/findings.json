@@ -1,0 +1,22 @@
+[
+  {
+    "finding_id": "primary_collision_scaling_mean_slope",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "source_table": "collision_scaling_summary.csv",
+    "columns": [
+      "mean_slope",
+      "bootstrap_ci95_low",
+      "bootstrap_ci95_high"
+    ],
+    "filters": "preload_all; configured fine-delta range",
+    "aggregation": "AF/DF midpoint within workload-design, then workload-slope summary",
+    "units": "log-log exponent",
+    "estimate": 0.9800100779709848,
+    "interval": null,
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa",
+    "text": "Primary collision scaling is summarized from one AF/DF-midpoint log-log slope per workload-design."
+  }
+]

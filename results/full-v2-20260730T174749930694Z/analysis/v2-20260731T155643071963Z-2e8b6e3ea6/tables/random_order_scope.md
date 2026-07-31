@@ -1,0 +1,3 @@
+| random_order_available | policy | scope_note |
+| --- | --- | --- |
+| False | random_order | No random_order tasks are present in this full-v2 run; no random-order finding is estimated. |

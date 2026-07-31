@@ -1,0 +1,3 @@
+model,n,r_squared,slope,slope_hc3_se,intercept,interpretation
+with_intercept,648,0.8447784824772924,0.4549963914332999,0.022971641540732876,-0.0002217767022179719,"identity test, not an estimator"
+through_origin,648,0.8549641463616261,0.44594611038657245,0.02281046620626688,0.0,"identity test, not an estimator"
