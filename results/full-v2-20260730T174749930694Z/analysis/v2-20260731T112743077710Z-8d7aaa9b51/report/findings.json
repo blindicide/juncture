@@ -1,0 +1,21 @@
+[
+  {
+    "finding_id": "smoke_scope",
+    "source_analysis_id": "v2-20260731T112743077710Z-8d7aaa9b51",
+    "source_table": "runtime_reproducibility.csv",
+    "columns": [
+      "analysis_id",
+      "source_run_id"
+    ],
+    "filters": "all",
+    "aggregation": "none",
+    "units": "n/a",
+    "estimate": null,
+    "interval": null,
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "a2cfb1c83dd8f230d187cf9547106c1b55c6db49",
+    "text": "Smoke output validates pipeline execution only; it is not a scientific finding."
+  }
+]

@@ -1,0 +1,9 @@
+error_metric,outcome,n,pearson,spearman,interpretation
+arrival_quantization_error_signed_mean,packet_loss_probability,116640,0.022878559626170598,0.03054780252755611,association only; not causal
+arrival_quantization_error_signed_mean,throughput,116640,-0.020843311218418297,-0.023838062317906673,association only; not causal
+arrival_quantization_error_signed_mean,mean_waiting_time,116640,0.034755066749054674,0.01933477166656253,association only; not causal
+arrival_quantization_error_signed_mean,time_average_number_in_system,116640,0.026352437342005954,0.020184155606774147,association only; not causal
+service_quantization_error_signed_mean,packet_loss_probability,116640,0.02290276393422598,0.025845014556799432,association only; not causal
+service_quantization_error_signed_mean,throughput,116640,-0.020895313572111864,-0.025149520793444412,association only; not causal
+service_quantization_error_signed_mean,mean_waiting_time,116640,0.034739351535672314,0.02023073624559265,association only; not causal
+service_quantization_error_signed_mean,time_average_number_in_system,116640,0.026315638733672257,0.020799609415551264,association only; not causal
