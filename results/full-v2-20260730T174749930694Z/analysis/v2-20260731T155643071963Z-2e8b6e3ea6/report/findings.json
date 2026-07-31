@@ -1,22 +1,223 @@
 [
   {
-    "finding_id": "primary_collision_scaling_mean_slope",
-    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
-    "source_table": "collision_scaling_summary.csv",
-    "columns": [
-      "mean_slope",
-      "bootstrap_ci95_low",
-      "bootstrap_ci95_high"
+    "finding_id": "H1_exact_theory_validation",
+    "hypothesis": "H1: the exact engine agrees with the M/M/1/K reference on eligible workloads",
+    "status": "supported",
+    "source_files": [
+      "derived/theory_validation.csv"
     ],
-    "filters": "preload_all; configured fine-delta range",
-    "aggregation": "AF/DF midpoint within workload-design, then workload-slope summary",
-    "units": "log-log exponent",
-    "estimate": 0.9800100779709848,
-    "interval": null,
+    "filters": "preload_all exact rows; exponential arrivals and services; all 24 rho-by-capacity conditions",
+    "aggregation_unit": "condition mean over 30 replications",
+    "row_count": 24,
+    "estimate": {
+      "maximum_absolute_loss_difference": 0.001493697932696,
+      "rho": 1.1,
+      "capacity": 16
+    },
+    "interval": {
+      "available": false,
+      "reason": "theory-validation table contains no replication-level confidence interval"
+    },
+    "interpretation": "Exact-engine agreement is a validation result, not a causal claim about quantization.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
     "run_ids": [
       "full-v2-20260730T174749930694Z"
     ],
-    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa",
-    "text": "Primary collision scaling is summarized from one AF/DF-midpoint log-log slope per workload-design."
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
+  },
+  {
+    "finding_id": "H2_collision_scaling",
+    "hypothesis": "H2: collision-event frequency scales approximately linearly with fine timestamp resolution",
+    "status": "supported",
+    "source_files": [
+      "derived/collision_scaling_workload_slopes.csv",
+      "derived/collision_scaling_summary.csv"
+    ],
+    "filters": "preload_all only; delta > 0 and delta <= 0.003; arrival_first and departure_first averaged within workload-design and delta before fitting",
+    "aggregation_unit": "one log-log slope per workload-design, then summary by rho, capacity, and quantizer",
+    "row_count": {
+      "workload_design_slopes": 2160,
+      "condition_summaries": 72
+    },
+    "estimate": {
+      "mean_workload_design_slope": 0.9800100779709847,
+      "range_of_condition_mean_slopes": [
+        0.9199209628524304,
+        1.0308733807738162
+      ]
+    },
+    "interval": {
+      "available": true,
+      "type": "condition-specific 95% bootstrap CI",
+      "resamples": 10000,
+      "source_column_pair": [
+        "bootstrap_ci95_low",
+        "bootstrap_ci95_high"
+      ],
+      "rows": 72,
+      "pooled_interval": null
+    },
+    "interpretation": "The estimate is descriptive across the configured grid; no pooled causal or universal scaling claim is made.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
+  },
+  {
+    "finding_id": "H3_af_df_ordering_sensitivity",
+    "hypothesis": "H3: deterministic within-tick order changes packet-loss outcomes",
+    "status": "supported",
+    "source_files": [
+      "derived/paired_bias_decomposition.parquet",
+      "derived/predictor_rows.parquet"
+    ],
+    "filters": "preload_all only; exact workload reference joined by workload identity; paired arrival_first/departure_first observations",
+    "aggregation_unit": "workload-paired AF/DF difference; configuration means use 30 workload replications",
+    "row_count": {
+      "paired_workloads": 19440,
+      "configuration_rows": 648
+    },
+    "estimate": {
+      "mean_absolute_policy_gap": 0.0012032551440329222,
+      "exact_inside_deterministic_interval_fraction": 0.5004115226337449
+    },
+    "interval": {
+      "available": true,
+      "type": "configuration-specific 95% workload-replication bootstrap",
+      "source_columns": [
+        "policy_gap_bootstrap_ci95_low",
+        "policy_gap_bootstrap_ci95_high"
+      ],
+      "rows": 648,
+      "pooled_interval": null
+    },
+    "interpretation": "This is a paired simulation contrast, not evidence of a causal mechanism outside the model.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
+  },
+  {
+    "finding_id": "H4_critical_collision_predictor",
+    "hypothesis": "H4: critical acceptance-difference rate is associated with AF/DF policy sensitivity",
+    "status": "supported",
+    "source_files": [
+      "derived/predictor_models.csv",
+      "derived/predictor_rows.parquet"
+    ],
+    "filters": "preload_all only; one AF/DF-paired mean row per experimental configuration",
+    "aggregation_unit": "648 configuration-level means from 19,440 workload-paired rows; leave-configuration-out validation",
+    "row_count": 648,
+    "estimate": {
+      "r_squared": 0.8447784824772924,
+      "cv_rmse": 0.0016198964528441,
+      "critical_rate_coefficient": 0.4549963914332999
+    },
+    "interval": {
+      "available": true,
+      "type": "95% bootstrap over workload-paired replications within configuration",
+      "resamples": 1000,
+      "coefficient_ci": [
+        0.4537515819817469,
+        0.4562070583723092
+      ]
+    },
+    "validation": {
+      "group": "analysis_configuration_id",
+      "folds": 648,
+      "configurations_disjoint_between_train_and_test": true
+    },
+    "interpretation": "Association only; regression coefficients are not causal estimates.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
+  },
+  {
+    "finding_id": "H5_quantizer_timing_diagnostics",
+    "hypothesis": "H5: quantizer timing diagnostics are associated with observed outcomes",
+    "status": "limited",
+    "source_files": [
+      "derived/quantization_diagnostics.csv",
+      "derived/quantization_correlations.csv"
+    ],
+    "filters": "preload_all quantized rows; descriptive quantizer, rho, capacity, delta, and policy summaries",
+    "aggregation_unit": "configuration summary and pairwise descriptive correlation",
+    "row_count": {
+      "diagnostic_rows": 1944,
+      "correlation_rows": 8
+    },
+    "estimate": {
+      "largest_absolute_pearson": 0.0346980198484252,
+      "error_metric": "arrival_quantization_error_signed_mean",
+      "outcome": "mean_waiting_time"
+    },
+    "interval": {
+      "available": false,
+      "reason": "correlation table reports no confidence intervals"
+    },
+    "interpretation": "Diagnostics are descriptive associations and do not establish a causal effect of quantization error.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
+  },
+  {
+    "finding_id": "H6_insertion_and_architecture_robustness",
+    "hypothesis": "H6: insertion-order behavior is scheduler-architecture dependent while explicit-order primary results remain distinct",
+    "status": "limited",
+    "source_files": [
+      "derived/insertion_architecture.parquet",
+      "derived/architecture_robustness_comparison.csv"
+    ],
+    "filters": "primary insertion table: preload_all only; architecture comparison: preload_all versus separately labelled schedule_next_after_transition",
+    "aggregation_unit": "paired workload rows for insertion; one matched configuration row for robustness comparison",
+    "row_count": {
+      "primary_insertion_pairs": 19440,
+      "architecture_comparisons": 648
+    },
+    "estimate": {
+      "insertion_count_match_fraction": {
+        "insertion_matches_arrival_first_counts": 1.0,
+        "insertion_matches_departure_first_counts": 0.37222222222222223
+      },
+      "maximum_absolute_critical_rate_robustness_difference": 0.0013603333333333
+    },
+    "interval": {
+      "available": false,
+      "reason": "no architecture-comparison confidence interval is published"
+    },
+    "interpretation": "schedule_next_after_transition is a robustness result only and is never pooled with primary observations.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
+  },
+  {
+    "finding_id": "H7_random_order_variance",
+    "hypothesis": "H7: random-order tie-breaking has measurable within-workload variance",
+    "status": "not tested",
+    "source_files": [
+      "derived/random_order_scope.csv"
+    ],
+    "filters": "full-v2 campaign",
+    "aggregation_unit": "not applicable",
+    "row_count": 0,
+    "estimate": null,
+    "interval": {
+      "available": false,
+      "reason": "random_order is absent from this run"
+    },
+    "interpretation": "No random_order tasks are present in this full-v2 run; no random-order finding is estimated.",
+    "source_analysis_id": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "run_ids": [
+      "full-v2-20260730T174749930694Z"
+    ],
+    "commit": "5247956af3f193511b7b7241b7b3b80a257198aa"
   }
 ]
