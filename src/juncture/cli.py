@@ -94,6 +94,14 @@ def _paper_assets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _report_assets(args: argparse.Namespace) -> int:
+    from .publication import refresh_report_assets
+
+    refresh_report_assets(Path(args.analysis_dir))
+    print(Path(args.analysis_dir))
+    return 0
+
+
 def _compare_runs(args: argparse.Namespace) -> int:
     from .verification import compare_runs
 
@@ -153,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     assets = commands.add_parser("paper-assets")
     assets.add_argument("--analysis-dir", required=True)
     assets.set_defaults(func=_paper_assets)
+    report_assets = commands.add_parser("report-assets")
+    report_assets.add_argument("--analysis-dir", required=True)
+    report_assets.set_defaults(func=_report_assets)
     compare = commands.add_parser("compare-runs")
     compare.add_argument("--analysis-dir", action="append", required=True)
     compare.add_argument("--output-dir")
