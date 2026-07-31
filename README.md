@@ -27,6 +27,12 @@ Exact simulations are checked against the M/M/1/K stationary full-state probabil
 
 Schema-v2 runs add deterministic cryptographic identities, independent workload/tie/quantization seeds, measurement-window collision counters, timing diagnostics, and configurable arrival-scheduling architectures. `analyze` creates an immutable, versioned analysis below the run; it never rewrites a historical run's `derived`, `figures`, `tables`, or `report` directories. Schema-1 inputs require explicit legacy opt-in and retain the label `legacy_collision_event_fraction`.
 
+For Phase II publication, `preload_all` is the canonical architecture. The analysis keeps
+`schedule_next_after_transition` in separately labelled robustness outputs, never mixed into
+primary tables or models. Collision scaling averages AF/DF within a workload-design and delta
+before fitting one workload-level slope. Predictor models first aggregate paired workload
+estimates to one experimental-configuration row and use replication-level bootstrap intervals.
+
 Use the permitted validation workflow before any large campaign:
 
 ```bash

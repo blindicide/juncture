@@ -36,14 +36,25 @@ def fit_ols(
 def fit_grouped_ols(
     data: pd.DataFrame, outcome: str, predictors: list[str], name: str, group: str
 ) -> dict[str, float | str]:
-    """OLS with HC3 uncertainty and leave-group-out prediction error."""
+    """OLS with HC3 uncertainty and disjoint leave-group-out validation."""
     usable = data.dropna(subset=[outcome, *predictors, group])
     if len(usable) <= len(predictors) + 1:
-        return {"model": name, "n": len(usable), "r_squared": float("nan"), "cv_rmse": float("nan")}
+        return {
+            "model": name,
+            "n": len(usable),
+            "r_squared": float("nan"),
+            "cv_rmse": float("nan"),
+            "uncertainty": "HC3",
+            "folding": f"leave-{group}-out",
+            "validation_group": group,
+            "n_folds": int(usable[group].nunique()),
+            "train_test_groups_disjoint": True,
+        }
     design = sm.add_constant(usable[predictors])
     fit = sm.OLS(usable[outcome], design).fit(cov_type="HC3")
     predictions = pd.Series(index=usable.index, dtype=float)
-    for _, held_out in usable.groupby(group):
+    fold_groups = list(usable.groupby(group, sort=True))
+    for _, held_out in fold_groups:
         train = usable.drop(index=held_out.index)
         if len(train) <= len(predictors) + 1:
             continue
@@ -54,7 +65,11 @@ def fit_grouped_ols(
         "model": name, "n": len(usable), "r_squared": float(fit.rsquared),
         "adjusted_r_squared": float(fit.rsquared_adj),
         "cv_rmse": float(np.sqrt(np.mean(cv_errors**2))) if len(cv_errors) else float("nan"),
-        "uncertainty": "HC3", "folding": f"leave-{group}-out",
+        "uncertainty": "HC3",
+        "folding": f"leave-{group}-out",
+        "validation_group": group,
+        "n_folds": len(fold_groups),
+        "train_test_groups_disjoint": True,
     }
     for key, value in fit.params.items():
         result[f"coefficient_{key}"] = float(value)

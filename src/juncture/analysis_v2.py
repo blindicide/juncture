@@ -25,6 +25,9 @@ from .schema import ANALYSIS_SCHEMA_VERSION
 from .storage import atomic_json, atomic_parquet, save_yaml
 from .theory import effective_throughput, stationary_loss_probability
 
+PRIMARY_ARCHITECTURE = "preload_all"
+ROBUSTNESS_ARCHITECTURE = "schedule_next_after_transition"
+
 
 @dataclass(frozen=True)
 class AnalysisConfig:
@@ -32,6 +35,7 @@ class AnalysisConfig:
     fine_delta_max: float = 0.003
     sensitivity_cutoffs: list[float] | None = None
     bootstrap_resamples: int = 10_000
+    predictor_bootstrap_resamples: int = 1_000
     bootstrap_seed: int = 20260729
     deterministic_policy_scope: str = "mean(arrival_first,departure_first)"
     confidence_level: float = 0.95
@@ -44,6 +48,8 @@ class AnalysisConfig:
             raise ValueError("analysis schema_version must be 2")
         if self.fine_delta_max <= 0 or self.bootstrap_resamples < 1:
             raise ValueError("fine_delta_max and bootstrap_resamples must be positive")
+        if self.predictor_bootstrap_resamples < 1:
+            raise ValueError("predictor_bootstrap_resamples must be positive")
         if self.deterministic_policy_scope != "mean(arrival_first,departure_first)":
             raise ValueError("only the paired AF/DF deterministic scope is supported")
         if not 0 < self.confidence_level < 1:
@@ -62,6 +68,7 @@ def load_analysis_config(path: Path | None) -> AnalysisConfig:
         fine_delta_max=float(raw.get("fine_delta_max", 0.003)),
         sensitivity_cutoffs=list(raw.get("sensitivity_cutoffs", [0.001, 0.003, 0.01])),
         bootstrap_resamples=int(raw.get("bootstrap_resamples", 10_000)),
+        predictor_bootstrap_resamples=int(raw.get("predictor_bootstrap_resamples", 1_000)),
         bootstrap_seed=int(raw.get("bootstrap_seed", 20260729)),
         deterministic_policy_scope=str(
             raw.get("deterministic_policy_scope", "mean(arrival_first,departure_first)")
@@ -229,40 +236,251 @@ def _configuration_summary(quantized: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
-def _scaling(quantized: pd.DataFrame, config: AnalysisConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _scaling(
+    quantized: pd.DataFrame, config: AnalysisConfig
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fit one deterministic midpoint slope per workload-design unit.
+
+    A workload is reused across quantizers, so ``workload_id`` alone is not a
+    collision-scaling observation.  The analysis unit is therefore a workload
+    under one quantizer (with rho and capacity already embedded in the workload
+    identity).  AF and DF are averaged *before* the log-log fit.
+    """
     use = quantized[
         quantized.policy.isin(["arrival_first", "departure_first"])
         & (quantized.delta > 0)
         & (quantized.delta <= config.fine_delta_max)
     ].copy()
     value = "collision_event_fraction"
-    if value not in use:
-        return _empty(["scaling_exponent"]), _empty(["delta"])
-    group_keys = [key for key in ("rho", "capacity", "quantizer", "policy", "replication", "arrival_scheduling_mode") if key in use]
-    rows: list[dict[str, Any]] = []
-    for group_key, group in use.groupby(group_keys):
-        rates = group.groupby("delta", as_index=False)[value].mean()
-        rates = rates[rates[value] > 0]
-        if len(rates) < 2:
-            continue
-        slope, intercept = np.polyfit(np.log(rates.delta), np.log(rates[value]), 1)
-        row = dict(zip(group_keys, group_key if isinstance(group_key, tuple) else (group_key,)))
-        row.update({"n_deltas": len(rates), "scaling_exponent": slope, "intercept": intercept})
-        rows.append(row)
-    replication_slopes = pd.DataFrame(rows)
-    if replication_slopes.empty:
-        return replication_slopes, use
-    summary_keys = [key for key in ("rho", "capacity", "quantizer", "policy", "arrival_scheduling_mode") if key in replication_slopes]
-    summary = replication_slopes.groupby(summary_keys, as_index=False).agg(
-        n=("scaling_exponent", "size"), mean_slope=("scaling_exponent", "mean"),
-        sd_slope=("scaling_exponent", "std"), median_slope=("scaling_exponent", "median"),
-        q25_slope=("scaling_exponent", lambda x: x.quantile(.25)),
-        q75_slope=("scaling_exponent", lambda x: x.quantile(.75)),
+    if use.empty or value not in use:
+        return _empty(["scaling_exponent"]), _empty(["mean_slope"]), _empty(["delta"])
+    unit_keys = [
+        key
+        for key in ("workload_id", "rho", "capacity", "quantizer", "arrival_scheduling_mode")
+        if key in use
+    ]
+    policy_rates = (
+        use.groupby(unit_keys + ["delta", "policy"], as_index=False)[value]
+        .mean()
+        .pivot(index=unit_keys + ["delta"], columns="policy", values=value)
+        .reset_index()
     )
-    ci = [paired_bootstrap_ci(group.scaling_exponent.to_numpy(), seed=config.bootstrap_seed, resamples=config.bootstrap_resamples) for _, group in summary.merge(replication_slopes, on=summary_keys).groupby(summary_keys)]
-    summary["bootstrap_ci95_low"] = [item[0] for item in ci]
-    summary["bootstrap_ci95_high"] = [item[1] for item in ci]
-    return summary, use
+    required = {"arrival_first", "departure_first"}
+    if not required <= set(policy_rates):
+        return _empty(["scaling_exponent"]), _empty(["mean_slope"]), _empty(["delta"])
+    midpoint = policy_rates[list(required)].mean(axis=1)
+    scaling_input = policy_rates[unit_keys + ["delta"]].copy()
+    scaling_input["deterministic_mean_collision_event_fraction"] = midpoint
+    scaling_input["af_df_policy_rows_averaged"] = 2
+    scaling_input["aggregation"] = "mean(arrival_first,departure_first) within workload-design and delta"
+    rows: list[dict[str, Any]] = []
+    for group_key, group in scaling_input.groupby(unit_keys, sort=True):
+        valid = group[group.deterministic_mean_collision_event_fraction > 0].sort_values("delta")
+        if len(valid) < 2:
+            continue
+        slope, intercept = np.polyfit(
+            np.log(valid.delta), np.log(valid.deterministic_mean_collision_event_fraction), 1
+        )
+        row = dict(zip(unit_keys, group_key if isinstance(group_key, tuple) else (group_key,)))
+        row.update(
+            {
+                "n_valid_deltas": len(valid),
+                "scaling_exponent": slope,
+                "intercept": intercept,
+                "aggregation": "AF/DF midpoint before one log-log slope per workload-design",
+            }
+        )
+        rows.append(row)
+    slopes = pd.DataFrame(rows)
+    if slopes.empty:
+        return slopes, _empty(["mean_slope"]), scaling_input
+    summary_keys = [key for key in ("rho", "capacity", "quantizer", "arrival_scheduling_mode") if key in slopes]
+    summary = slopes.groupby(summary_keys, as_index=False).agg(
+        n_workloads=("scaling_exponent", "size"),
+        mean_slope=("scaling_exponent", "mean"),
+        sd_slope=("scaling_exponent", "std"),
+        median_slope=("scaling_exponent", "median"),
+        q25_slope=("scaling_exponent", lambda values: values.quantile(0.25)),
+        q75_slope=("scaling_exponent", lambda values: values.quantile(0.75)),
+    )
+    summary["iqr_slope"] = summary.q75_slope - summary.q25_slope
+    intervals: list[tuple[float, float]] = []
+    for index, (_, group) in enumerate(slopes.groupby(summary_keys, sort=True)):
+        intervals.append(
+            paired_bootstrap_ci(
+                group.scaling_exponent.to_numpy(),
+                seed=config.bootstrap_seed + index,
+                resamples=config.bootstrap_resamples,
+            )
+        )
+    summary["bootstrap_ci95_low"] = [interval[0] for interval in intervals]
+    summary["bootstrap_ci95_high"] = [interval[1] for interval in intervals]
+    summary["bootstrap_unit"] = "workload-design replication"
+    summary["aggregation"] = "AF/DF midpoint, then one slope per workload-design"
+    return slopes, summary, scaling_input
+
+
+def _analysis_configuration_id(row: pd.Series) -> str:
+    fields = {
+        key: row[key]
+        for key in ("rho", "capacity", "delta", "quantizer", "arrival_scheduling_mode")
+    }
+    encoded = json.dumps(fields, sort_keys=True, default=str).encode("utf-8")
+    return f"analysis_configuration_{hashlib.sha256(encoded).hexdigest()[:24]}"
+
+
+def _predictor_rows(
+    paired: pd.DataFrame, quantized: pd.DataFrame, config: AnalysisConfig
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return workload-paired and one-row-per-configuration predictor inputs."""
+    if paired.empty:
+        return _empty(["analysis_configuration_id"]), _empty(["analysis_configuration_id"])
+    keys = [
+        key
+        for key in ("pair_id", "workload_id", "rho", "capacity", "delta", "quantizer", "arrival_scheduling_mode")
+        if key in paired and key in quantized
+    ]
+    deterministic = quantized[quantized.policy.isin(["arrival_first", "departure_first"])]
+    collision = deterministic.groupby(keys, as_index=False).agg(
+        total_collision_rate=("collision_event_fraction", "mean"),
+        mixed_collision_rate=("mixed_collision_rate", "mean"),
+        critical_collision_rate=("critical_acceptance_difference_rate", "mean"),
+    )
+    workload = paired.merge(collision, on=keys, how="left", validate="one_to_one")
+    workload["absolute_policy_gap"] = workload["absolute_packet_loss_probability_gap"]
+    workload["inverse_capacity"] = 1 / workload.capacity
+    workload["analysis_configuration_id"] = workload.apply(_analysis_configuration_id, axis=1)
+    configuration_keys = [
+        "analysis_configuration_id",
+        "rho",
+        "capacity",
+        "delta",
+        "quantizer",
+        "arrival_scheduling_mode",
+    ]
+    value_columns = [
+        "absolute_policy_gap",
+        "total_collision_rate",
+        "mixed_collision_rate",
+        "critical_collision_rate",
+        "inverse_capacity",
+    ]
+    rows = workload.groupby(configuration_keys, as_index=False).agg(
+        n_workloads=("workload_id", "nunique"),
+        **{column: (column, "mean") for column in value_columns},
+    )
+    intervals = [
+        paired_bootstrap_ci(
+            group.absolute_policy_gap.to_numpy(),
+            seed=config.bootstrap_seed + index,
+            resamples=config.bootstrap_resamples,
+        )
+        for index, (_, group) in enumerate(workload.groupby(configuration_keys, sort=True))
+    ]
+    rows["policy_gap_bootstrap_ci95_low"] = [interval[0] for interval in intervals]
+    rows["policy_gap_bootstrap_ci95_high"] = [interval[1] for interval in intervals]
+    rows["aggregation"] = "mean of workload-paired AF/DF estimates"
+    rows["bootstrap_unit"] = "workload replication"
+    if rows.analysis_configuration_id.duplicated().any():
+        raise ValueError("predictor aggregation did not produce one row per configuration")
+    return workload, rows
+
+
+def _ols_coefficients(data: pd.DataFrame, outcome: str, predictors: list[str]) -> dict[str, float]:
+    usable = data.dropna(subset=[outcome, *predictors])
+    if len(usable) <= len(predictors) + 1:
+        return {}
+    design = np.column_stack([np.ones(len(usable)), *(usable[field].to_numpy() for field in predictors)])
+    values = np.linalg.lstsq(design, usable[outcome].to_numpy(), rcond=None)[0]
+    return dict(zip(["const", *predictors], values, strict=True))
+
+
+def _bootstrap_predictor_models(
+    workload: pd.DataFrame,
+    models: list[dict[str, Any]],
+    config: AnalysisConfig,
+) -> None:
+    """Attach CIs from resampling paired workload replications within configurations."""
+    specifications = {
+        "total": ["total_collision_rate"],
+        "mixed": ["mixed_collision_rate"],
+        "critical": ["critical_collision_rate"],
+        "multivariable": ["critical_collision_rate", "rho", "inverse_capacity", "delta"],
+    }
+    configuration_keys = [
+        "analysis_configuration_id",
+        "rho",
+        "capacity",
+        "delta",
+        "quantizer",
+        "arrival_scheduling_mode",
+    ]
+    fields = [
+        "absolute_policy_gap",
+        "total_collision_rate",
+        "mixed_collision_rate",
+        "critical_collision_rate",
+        "rho",
+        "inverse_capacity",
+        "delta",
+    ]
+    groups = [
+        group[fields].to_numpy(dtype=float)
+        for _, group in workload.groupby(configuration_keys, sort=True)
+    ]
+    if not groups:
+        return
+    rng = np.random.default_rng(config.bootstrap_seed)
+    sampled: dict[str, dict[str, list[float]]] = {
+        name: {field: [] for field in ["const", *predictors]}
+        for name, predictors in specifications.items()
+    }
+    for _ in range(config.predictor_bootstrap_resamples):
+        means = np.asarray(
+            [
+                values[rng.integers(0, len(values), size=len(values))].mean(axis=0)
+                for values in groups
+            ]
+        )
+        sample = pd.DataFrame(means, columns=fields)
+        for name, predictors in specifications.items():
+            for field, value in _ols_coefficients(sample, "absolute_policy_gap", predictors).items():
+                sampled[name][field].append(value)
+    for model in models:
+        name = str(model["model"])
+        for field, values in sampled.get(name, {}).items():
+            if values:
+                low, high = np.quantile(values, [0.025, 0.975])
+                model[f"bootstrap_ci95_low_coefficient_{field}"] = float(low)
+                model[f"bootstrap_ci95_high_coefficient_{field}"] = float(high)
+        model["bootstrap_unit"] = "workload-paired replication within configuration"
+        model["bootstrap_resamples"] = config.predictor_bootstrap_resamples
+
+
+def _predictor_models(
+    configuration_rows: pd.DataFrame, workload_rows: pd.DataFrame, config: AnalysisConfig
+) -> pd.DataFrame:
+    if configuration_rows.empty:
+        return pd.DataFrame()
+    models = [
+        fit_grouped_ols(configuration_rows, "absolute_policy_gap", [field], name, "analysis_configuration_id")
+        for field, name in (
+            ("total_collision_rate", "total"),
+            ("mixed_collision_rate", "mixed"),
+            ("critical_collision_rate", "critical"),
+        )
+    ]
+    models.append(
+        fit_grouped_ols(
+            configuration_rows,
+            "absolute_policy_gap",
+            ["critical_collision_rate", "rho", "inverse_capacity", "delta"],
+            "multivariable",
+            "analysis_configuration_id",
+        )
+    )
+    _bootstrap_predictor_models(workload_rows, models, config)
+    return pd.DataFrame(models)
 
 
 def _random_variance(quantized: pd.DataFrame, paired: pd.DataFrame, config: AnalysisConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -318,6 +536,29 @@ def _insertion(quantized: pd.DataFrame) -> pd.DataFrame:
                 output["insertion_order_packet_loss_probability"] - output[f"{policy}_packet_loss_probability"]
             ).abs()
     return output
+
+
+def _architecture_comparison(primary: pd.DataFrame, robustness: pd.DataFrame) -> pd.DataFrame:
+    keys = [key for key in ("rho", "capacity", "delta", "quantizer") if key in primary and key in robustness]
+    if primary.empty or robustness.empty or not keys:
+        return _empty(keys)
+    fields = [
+        field
+        for field in ("absolute_policy_gap", "critical_collision_rate", "total_collision_rate")
+        if field in primary and field in robustness
+    ]
+    left = primary[keys + fields].rename(columns={field: f"preload_all_{field}" for field in fields})
+    right = robustness[keys + fields].rename(
+        columns={field: f"schedule_next_after_transition_{field}" for field in fields}
+    )
+    comparison = left.merge(right, on=keys, validate="one_to_one")
+    for field in fields:
+        comparison[f"robustness_difference_{field}"] = (
+            comparison[f"schedule_next_after_transition_{field}"]
+            - comparison[f"preload_all_{field}"]
+        )
+    comparison["comparison_label"] = "robustness only; not primary observations"
+    return comparison
 
 
 def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
@@ -381,33 +622,101 @@ def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
         return target
     quantized = quantized.copy()
     quantized["collision_denominator_consistent"] = True
-    paired = _paired(quantized, exact)
-    summary = _configuration_summary(quantized)
-    scaling, scaling_input = _scaling(quantized, config)
-    random, random_decomposition = _random_variance(quantized, paired, config)
-    insertion = _insertion(quantized)
+    primary_quantized = quantized[
+        quantized.arrival_scheduling_mode.eq(PRIMARY_ARCHITECTURE)
+    ].copy()
+    robustness_quantized = quantized[
+        quantized.arrival_scheduling_mode.eq(ROBUSTNESS_ARCHITECTURE)
+    ].copy()
+    primary_exact = exact[exact.arrival_scheduling_mode.eq(PRIMARY_ARCHITECTURE)].copy()
+    robustness_exact = exact[
+        exact.arrival_scheduling_mode.eq(ROBUSTNESS_ARCHITECTURE)
+    ].copy()
+    paired = _paired(primary_quantized, primary_exact)
+    robustness_paired = _paired(robustness_quantized, robustness_exact)
+    summary = _configuration_summary(primary_quantized)
+    robustness_summary = _configuration_summary(robustness_quantized)
+    slopes, scaling, scaling_input = _scaling(primary_quantized, config)
+    robustness_slopes, robustness_scaling, robustness_scaling_input = _scaling(
+        robustness_quantized, config
+    )
+    predictor_workloads, predictor = _predictor_rows(paired, primary_quantized, config)
+    robustness_predictor_workloads, robustness_predictor = _predictor_rows(
+        robustness_paired, robustness_quantized, config
+    )
+    models = _predictor_models(predictor, predictor_workloads, config)
+    robustness_models = _predictor_models(
+        robustness_predictor, robustness_predictor_workloads, config
+    )
+    random, random_decomposition = _random_variance(primary_quantized, paired, config)
+    insertion = _insertion(primary_quantized)
+    robustness_insertion = _insertion(robustness_quantized)
+    architecture_comparison = _architecture_comparison(predictor, robustness_predictor)
     atomic_parquet(quantized, target / "derived" / "quantized_v2.parquet")
     atomic_parquet(paired, target / "derived" / "paired_bias_decomposition.parquet")
+    atomic_parquet(
+        robustness_paired, target / "derived" / "robustness_paired_bias_decomposition.parquet"
+    )
     atomic_parquet(summary, target / "derived" / "configuration_summary.parquet")
+    atomic_parquet(
+        robustness_summary, target / "derived" / "robustness_configuration_summary.parquet"
+    )
     atomic_parquet(random, target / "derived" / "random_order_workload_variance.parquet")
     atomic_parquet(insertion, target / "derived" / "insertion_architecture.parquet")
+    atomic_parquet(
+        robustness_insertion, target / "derived" / "robustness_insertion_architecture.parquet"
+    )
     atomic_parquet(scaling_input, target / "derived" / "collision_scaling_input.parquet")
+    atomic_parquet(
+        robustness_scaling_input, target / "derived" / "robustness_collision_scaling_input.parquet"
+    )
+    atomic_parquet(predictor_workloads, target / "derived" / "predictor_workload_rows.parquet")
+    atomic_parquet(predictor, target / "derived" / "predictor_rows.parquet")
+    atomic_parquet(
+        robustness_predictor_workloads, target / "derived" / "robustness_predictor_workload_rows.parquet"
+    )
+    atomic_parquet(
+        robustness_predictor, target / "derived" / "robustness_predictor_rows.parquet"
+    )
     random_decomposition.to_csv(target / "derived" / "random_variance_decomposition.csv", index=False)
-    scaling.to_csv(target / "derived" / "collision_scaling_replication_slopes.csv", index=False)
-    theory = _theory_metadata(run_dir, exact)
+    slopes.to_csv(target / "derived" / "collision_scaling_workload_slopes.csv", index=False)
+    scaling.to_csv(target / "derived" / "collision_scaling_summary.csv", index=False)
+    robustness_slopes.to_csv(
+        target / "derived" / "robustness_collision_scaling_workload_slopes.csv", index=False
+    )
+    robustness_scaling.to_csv(target / "derived" / "robustness_collision_scaling_summary.csv", index=False)
+    models.to_csv(target / "derived" / "predictor_models.csv", index=False)
+    robustness_models.to_csv(target / "derived" / "robustness_predictor_models.csv", index=False)
+    architecture_comparison.to_csv(
+        target / "derived" / "architecture_robustness_comparison.csv", index=False
+    )
+    pd.DataFrame([
+        {
+            "random_order_available": not random.empty,
+            "policy": "random_order",
+            "scope_note": "No random_order tasks are present in this full-v2 run; no random-order finding is estimated.",
+        }
+    ]).to_csv(target / "derived" / "random_order_scope.csv", index=False)
+    theory = _theory_metadata(run_dir, primary_exact)
     theory.to_csv(target / "derived" / "theory_validation.csv", index=False)
+    robustness_theory = _theory_metadata(run_dir, robustness_exact)
+    robustness_theory.to_csv(target / "derived" / "robustness_theory_validation.csv", index=False)
     diagnostics_fields = [
         field
         for field in quantized
         if field.startswith(("arrival_quantization_error_", "service_quantization_error_"))
     ]
-    diagnostic_keys = [key for key in ("quantizer", "rho", "capacity", "delta", "policy") if key in quantized]
-    diagnostics = quantized.groupby(diagnostic_keys, as_index=False)[diagnostics_fields].mean()
+    diagnostic_keys = [key for key in ("quantizer", "rho", "capacity", "delta", "policy") if key in primary_quantized]
+    diagnostics = primary_quantized.groupby(diagnostic_keys, as_index=False)[diagnostics_fields].mean()
     diagnostics.to_csv(target / "derived" / "quantization_diagnostics.csv", index=False)
+    robustness_diagnostics = robustness_quantized.groupby(diagnostic_keys, as_index=False)[diagnostics_fields].mean()
+    robustness_diagnostics.to_csv(
+        target / "derived" / "robustness_quantization_diagnostics.csv", index=False
+    )
     correlations: list[dict[str, Any]] = []
     for error in ("arrival_quantization_error_signed_mean", "service_quantization_error_signed_mean"):
         for outcome in ("packet_loss_probability", "throughput", "mean_waiting_time", "time_average_number_in_system"):
-            usable = quantized[[error, outcome]].dropna() if error in quantized and outcome in quantized else pd.DataFrame()
+            usable = primary_quantized[[error, outcome]].dropna() if error in primary_quantized and outcome in primary_quantized else pd.DataFrame()
             if len(usable) > 2:
                 correlations.append({
                     "error_metric": error, "outcome": outcome, "n": len(usable),
@@ -416,26 +725,7 @@ def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
                     "interpretation": "association only; not causal",
                 })
     pd.DataFrame(correlations).to_csv(target / "derived" / "quantization_correlations.csv", index=False)
-    predictor = paired.copy()
     if not predictor.empty:
-        predictor["absolute_policy_gap"] = predictor.get("absolute_packet_loss_probability_gap")
-        predictor["inverse_capacity"] = 1 / predictor.capacity
-        collision = quantized.groupby(["pair_id", "arrival_scheduling_mode"], as_index=False).agg(
-            total_collision_rate=("collision_event_fraction", "mean"),
-            mixed_collision_rate=("mixed_collision_rate", "mean"),
-            critical_collision_rate=("critical_acceptance_difference_rate", "mean"),
-        )
-        predictor = predictor.merge(collision, on=["pair_id", "arrival_scheduling_mode"], how="left")
-        models = [
-            fit_grouped_ols(predictor, "absolute_policy_gap", [field], name, "workload_id")
-            for field, name in (
-                ("total_collision_rate", "total"),
-                ("mixed_collision_rate", "mixed"),
-                ("critical_collision_rate", "critical"),
-            )
-        ]
-        models.append(fit_grouped_ols(predictor, "absolute_policy_gap", ["critical_collision_rate", "rho", "inverse_capacity", "delta"], "multivariable", "workload_id"))
-        pd.DataFrame(models).to_csv(target / "derived" / "predictor_models.csv", index=False)
         identity = predictor.dropna(subset=["absolute_policy_gap", "critical_collision_rate"])
         identity_rows = []
         if len(identity) > 1:
@@ -455,5 +745,43 @@ def analyze_run_v2(run_dir: Path, analysis_config: Path | None = None) -> Path:
                     "interpretation": "identity test, not an estimator",
                 })
         pd.DataFrame(identity_rows).to_csv(target / "derived" / "critical_identity_tests.csv", index=False)
-        atomic_parquet(predictor, target / "derived" / "predictor_rows.parquet")
+    provenance["primary_architecture"] = PRIMARY_ARCHITECTURE
+    provenance["robustness_architecture"] = ROBUSTNESS_ARCHITECTURE
+    provenance["aggregation"] = {
+        "collision_scaling": "Within workload-design and delta, mean arrival_first and departure_first; fit one log-log slope per workload-design over positive fine-delta values.",
+        "predictor_models": "Within workload-paired AF/DF observations, aggregate to exactly one row per experimental configuration before fitting; bootstrap resamples workload replications within each configuration.",
+        "validation_folds": "leave-analysis_configuration_id-out; configurations are disjoint between train and test.",
+    }
+    provenance["row_counts"] = {
+        "primary_quantized_rows": len(primary_quantized),
+        "robustness_quantized_rows": len(robustness_quantized),
+        "primary_paired_workload_rows": len(paired),
+        "primary_scaling_workload_slopes": len(slopes),
+        "primary_scaling_summary_rows": len(scaling),
+        "primary_predictor_workload_rows": len(predictor_workloads),
+        "primary_predictor_configuration_rows": len(predictor),
+        "robustness_predictor_configuration_rows": len(robustness_predictor),
+        "random_order_rows": int((quantized.policy == "random_order").sum()),
+    }
+    provenance["random_order_scope"] = "absent from full-v2; no random-order result is estimated"
+    validation = {
+        "primary_architecture_only": bool(
+            primary_quantized.arrival_scheduling_mode.eq(PRIMARY_ARCHITECTURE).all()
+        ),
+        "primary_scaling_has_no_policy_column": "policy" not in scaling.columns,
+        "primary_scaling_workload_slope_rows": len(slopes),
+        "primary_predictor_rows_unique": not predictor.analysis_configuration_id.duplicated().any(),
+        "primary_predictor_rows": len(predictor),
+        "primary_predictor_workload_rows": len(predictor_workloads),
+        "predictor_validation_group": "analysis_configuration_id",
+        "predictor_validation_folds": int(models.n_folds.max()) if not models.empty else 0,
+        "robustness_rows_separate": bool(
+            robustness_predictor.empty
+            or robustness_predictor.arrival_scheduling_mode.eq(ROBUSTNESS_ARCHITECTURE).all()
+        ),
+        "random_order_available": not random.empty,
+        "raw_hashes": provenance["source_raw_hashes"],
+    }
+    atomic_json(validation, target / "derived" / "analysis_validation.json")
+    atomic_json(provenance, target / "provenance.json")
     return target

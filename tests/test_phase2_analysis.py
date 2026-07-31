@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from juncture.analysis_v2 import analyze_run_v2
+from juncture.analysis_v2 import AnalysisConfig, _predictor_rows, _scaling, analyze_run_v2
 from juncture.campaign import create_run, execute_run
 from juncture.config import CampaignConfig
 from juncture.regression import fit_grouped_ols
@@ -30,3 +30,49 @@ def test_grouped_regression_handles_constant_predictor() -> None:
     })
     result = fit_grouped_ols(frame, "y", ["x", "constant"], "test", "group")
     assert result["n"] == 4
+    assert result["validation_group"] == "group"
+    assert result["n_folds"] == 2
+    assert result["train_test_groups_disjoint"] is True
+
+
+def test_scaling_averages_af_df_before_one_primary_workload_slope() -> None:
+    rows = []
+    for mode in ("preload_all", "schedule_next_after_transition"):
+        for delta, af, df in ((0.001, 0.08, 0.12), (0.002, 0.02, 0.03)):
+            rows.extend(
+                [
+                    {"workload_id": "w", "rho": 0.8, "capacity": 4, "quantizer": "floor", "arrival_scheduling_mode": mode, "delta": delta, "policy": "arrival_first", "collision_event_fraction": af},
+                    {"workload_id": "w", "rho": 0.8, "capacity": 4, "quantizer": "floor", "arrival_scheduling_mode": mode, "delta": delta, "policy": "departure_first", "collision_event_fraction": df},
+                ]
+            )
+    slopes, summary, input_rows = _scaling(
+        pd.DataFrame(rows).query("arrival_scheduling_mode == 'preload_all'"),
+        AnalysisConfig(bootstrap_resamples=20),
+    )
+    assert len(input_rows) == 2
+    assert len(slopes) == 1
+    assert len(summary) == 1
+    assert "policy" not in summary
+    assert input_rows.deterministic_mean_collision_event_fraction.tolist() == [0.1, 0.025]
+
+
+def test_predictors_aggregate_paired_workloads_to_one_configuration_row() -> None:
+    paired = pd.DataFrame(
+        [
+            {"pair_id": f"p-{rep}", "workload_id": f"w-{rep}", "rho": 0.8, "capacity": 4, "delta": 0.001, "quantizer": "floor", "arrival_scheduling_mode": "preload_all", "absolute_packet_loss_probability_gap": gap}
+            for rep, gap in enumerate((0.1, 0.2, 0.3, 0.4))
+        ]
+    )
+    quantized = pd.DataFrame(
+        [
+            {"pair_id": f"p-{rep}", "workload_id": f"w-{rep}", "rho": 0.8, "capacity": 4, "delta": 0.001, "quantizer": "floor", "arrival_scheduling_mode": "preload_all", "policy": policy, "collision_event_fraction": collision, "mixed_collision_rate": collision / 2, "critical_acceptance_difference_rate": collision / 4}
+            for rep, collision in enumerate((0.1, 0.2, 0.3, 0.4))
+            for policy in ("arrival_first", "departure_first")
+        ]
+    )
+    config = AnalysisConfig(bootstrap_resamples=20, predictor_bootstrap_resamples=10)
+    workloads, configurations = _predictor_rows(paired, quantized, config)
+    assert len(workloads) == 4
+    assert len(configurations) == 1
+    assert configurations.n_workloads.item() == 4
+    assert configurations.analysis_configuration_id.is_unique
