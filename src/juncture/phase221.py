@@ -146,6 +146,11 @@ def _save_figure(fig: plt.Figure, directory: Path, name: str, metadata: dict[str
     for extension in ("png", "svg", "pdf"):
         path = directory / f"{name}.{extension}"
         fig.savefig(path, dpi=300, bbox_inches="tight")
+        if extension == "svg":
+            path.write_text(
+                "\n".join(line.rstrip() for line in path.read_text(encoding="utf-8").splitlines()) + "\n",
+                encoding="utf-8",
+            )
         manifest.append({**metadata, "file": path.name, "sha256": _sha(path)})
     plt.close(fig)
 
@@ -282,7 +287,13 @@ def _reports(target: Path, findings: list[dict[str, Any]], predictor: pd.DataFra
     report.joinpath("findings.json").write_text(json.dumps(findings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     report.joinpath("summary.md").write_text("# Phase II.2.1 corrected publication bundle\n\nThis version corrects export selection and publication presentation only. It reuses immutable Phase II.2 inputs, retains the primary preload architecture scope, and does not rerun simulation or alter scientific tables. The critical predictor coefficient is 0.454996 for the canonical critical-collision term, not the saved intercept.\n\nThe main collision figure now shows frequency versus timestamp quantum on log axes; exponent versus capacity is supplemental. The architecture chart is derived from the validated summary and has mutually exclusive 100% categories.\n", encoding="utf-8")
     report.joinpath("methodology.md").write_text("# Export methodology\n\nAll values are loaded from the immutable source analysis. Predictor terms are selected by `model` plus a canonical non-constant term. The critical figure uses 648 unique saved primary configuration rows, plots the saved fit and identity reference, and expresses both axes in percentage points. Capacity and quantizer tables use configuration-level primary values; zero denominators yield null ratios.\n", encoding="utf-8")
-    report.joinpath("findings.md").write_text("# Traceable corrected findings\n\n" + "\n\n".join(f"## {item['finding_id']}\n\n{item['publication_text']}\n\nSource: `{item['source_file']}`; selector: `{item['row_selector']}`; estimate: `{json.dumps(item['estimate'], sort_keys=True)}`.\n" for item in findings) + "\n", encoding="utf-8")
+    findings_text = "# Traceable corrected findings\n\n" + "\n\n".join(
+        f"## {item['finding_id']}\n\n{item['publication_text']}\n\n"
+        f"Source: `{item['source_file']}`; selector: `{item['row_selector']}`; "
+        f"estimate: `{json.dumps(item['estimate'], sort_keys=True)}`.\n"
+        for item in findings
+    )
+    report.joinpath("findings.md").write_text(findings_text.rstrip() + "\n", encoding="utf-8")
     report.joinpath("limitations.md").write_text("# Limitations\n\nThe bundle repairs only exports. Predictor associations remain non-causal, saved condition exponents do not have intervals, CV MAE was not retained in the source predictor table, and random-order observations remain unavailable. The online architecture is a separately labelled robustness result, not a primary observation.\n", encoding="utf-8")
     report.joinpath("validation.md").write_text(f"# Validation\n\nPredictor export rows: {len(predictor)}. Capacity table rows: {len(capacity)}. Architecture rows: {len(architecture)}. Artifact and localization validators must pass before publication.\n", encoding="utf-8")
 
