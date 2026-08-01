@@ -32,7 +32,14 @@ def _sha(path: Path) -> str:
 def _md(frame: pd.DataFrame) -> str:
     if frame.empty:
         return "No rows.\n"
-    return frame.to_markdown(index=False) + "\n"
+    columns = [str(column) for column in frame.columns]
+    lines = [
+        "| " + " | ".join(columns) + " |",
+        "| " + " | ".join(["---"] * len(columns)) + " |",
+    ]
+    for row in frame.fillna("").itertuples(index=False, name=None):
+        lines.append("| " + " | ".join(str(value).replace("|", "\\|") for value in row) + " |")
+    return "\n".join(lines) + "\n"
 
 
 def _ci(values: pd.Series, seed: int = 20260801) -> tuple[float, float]:
