@@ -101,7 +101,7 @@ def test_phase22_zero_audit_keeps_zeros_out_of_log_fit_without_epsilon() -> None
 
 def test_phase22_report_findings_require_traceability_fields() -> None:
     entry = {field: "present" for field in _FINDING_FIELDS}
-    assert _report_entry(**entry) == entry
+    assert _report_entry(**entry)["status"] == "supported"
     entry.pop("commit")
     try:
         _report_entry(**entry)

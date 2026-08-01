@@ -176,6 +176,8 @@ def _report_entry(**entry: Any) -> dict[str, Any]:
     missing = _FINDING_FIELDS.difference(entry)
     if missing:
         raise ValueError(f"incomplete Phase II.2 finding: {sorted(missing)}")
+    prefix = str(entry["finding_id"]).split("_", 1)[0]
+    entry["status"] = "not_tested" if prefix == "H6" else "limited" if prefix in {"H1", "H3", "H4", "H5", "H7"} else "supported"
     return entry
 
 
@@ -212,6 +214,7 @@ def _finding_markdown(findings: list[dict[str, Any]]) -> str:
         ci_text = json.dumps(ci, sort_keys=True)
         sections.append(
             f"## {item['finding_id']}\n\n{item['publication_text']}\n\n"
+            f"- Status: `{item['status']}`.\n"
             f"- Source run: `{item['source_run']}`; source analysis: `{item['source_analysis']}`; commit: `{item['commit']}`.\n"
             f"- Source table/file: `{item['source_table']}` / `{item['source_file']}`.\n"
             f"- Filters: {item['filters']}\n"
@@ -281,6 +284,15 @@ def refresh_phase22_report(target: Path) -> None:
         units="midpoint loss-probability bias per signed service-duration error", estimate={"pearson": float(service.pearson), "spearman": float(service.spearman), "slope": float(service.slope), "intercept": float(service.intercept), "hc3_se": float(service.hc3_se_slope), "r_squared": float(service.r_squared), "cv_rmse": float(service.cv_rmse), "cv_mae": float(service.cv_mae), "folds": int(service.folds)},
         ci=_ci_entry(service.hc3_ci95_low, service.hc3_ci95_high, "HC3 normal-approximation interval for OLS slope"), sample_size={"configuration_rows": int(service.n), "paired_workload_rows": len(paired), "replications_per_configuration": int(timing.replication_count.min())}, commit=commit,
     ))
+    max_bias = timing.loc[timing.absolute_midpoint_loss_bias.idxmax()]
+    findings.append(_report_entry(
+        finding_id="H2_maximum_configuration_bias", publication_text=(
+            "H2 maximum configuration-mean bias identifies the largest saved absolute midpoint-bias configuration in the primary analysis; it is an observed configuration summary, not a worst-case guarantee beyond the sampled design."
+        ), source_run=principal, source_analysis=target.name, source_table="derived/timing_bias_configuration.parquet", source_file=source_table,
+        filters=primary_filter, grouping_keys="rho, capacity, delta, quantizer", aggregation="maximum absolute value over saved configuration means",
+        units="packet-loss probability", estimate={"configuration_id": str(max_bias.configuration_id_v22), "signed_midpoint_bias": float(max_bias.midpoint_signed_loss_bias), "absolute_midpoint_bias": float(max_bias.absolute_midpoint_loss_bias), "configuration_bootstrap_ci95": [float(max_bias.bias_bootstrap_ci95_low), float(max_bias.bias_bootstrap_ci95_high)]},
+        ci=_ci_entry(max_bias.bias_bootstrap_ci95_low, max_bias.bias_bootstrap_ci95_high, "bootstrap over the 30 paired workload rows in the selected configuration"), sample_size={"configuration_rows_searched": len(timing), "paired_workload_rows_selected_configuration": int(max_bias.replication_count)}, commit=commit,
+    ))
     for quantizer, group in timing.groupby("quantizer", sort=True):
         bias_ci = _ci(group.midpoint_signed_loss_bias, 20260830 + len(findings))
         gap_ci = _ci(group.af_df_loss_gap, 20260840 + len(findings))
@@ -320,8 +332,8 @@ def refresh_phase22_report(target: Path) -> None:
         low = next((column for column in models.columns if column.startswith("bootstrap_ci95_low_coefficient_") and coefficient and column.endswith(coefficient.removeprefix("coefficient_"))), None)
         high = next((column for column in models.columns if column.startswith("bootstrap_ci95_high_coefficient_") and coefficient and column.endswith(coefficient.removeprefix("coefficient_"))), None)
         findings.append(_report_entry(
-            finding_id=f"H4_predictor_{name}", publication_text=(
-                f"H4 retained predictor model ({name}) is an association model evaluated by grouped leave-one-configuration-out validation; it is not a direct causal estimator."
+        finding_id=f"H4_predictor_{name}", publication_text=(
+                f"H4 retained predictor model ({name}) is an association model evaluated by grouped leave-one-configuration-out validation; it is not a direct causal estimator." + (" The critical-rate coefficient is below one and must not be interpreted as a direct estimator." if name == "critical" else "")
             ), source_run=principal, source_analysis=baseline, source_table="tables/predictor_comparison.csv", source_file="derived/predictor_models_retained.csv",
             filters="primary preload_all retained predictor configurations", grouping_keys="analysis_configuration_id", aggregation="saved workload-paired configuration model with grouped validation",
             units="packet-loss-probability gap per model predictor unit", estimate={"r_squared": float(model.r_squared), "cv_rmse": float(model.cv_rmse), "folds": int(model.n_folds), "coefficient_name": coefficient, "coefficient": float(getattr(model, coefficient)) if coefficient else None}, ci=_ci_entry(getattr(model, low), getattr(model, high), "replication-level bootstrap, 1,000 resamples") if low and high else _unavailable("no single coefficient interval applies to this retained model row"), sample_size={"configuration_rows": int(model.n), "folds": int(model.n_folds), "train_test_groups_disjoint": bool(model.train_test_groups_disjoint)}, commit=commit,
