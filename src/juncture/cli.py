@@ -120,6 +120,21 @@ def _phase22_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _phase221_publish(args: argparse.Namespace) -> int:
+    from .phase221 import build_phase221
+
+    print(build_phase221(Path(args.source_analysis)))
+    return 0
+
+
+def _phase221_validate(args: argparse.Namespace) -> int:
+    from .phase221 import validate_phase221
+
+    validate_phase221(Path(args.publication_dir))
+    print(Path(args.publication_dir))
+    return 0
+
+
 def _compare_runs(args: argparse.Namespace) -> int:
     from .verification import compare_runs
 
@@ -190,6 +205,12 @@ def main(argv: list[str] | None = None) -> int:
     phase22_report = commands.add_parser("phase22-report")
     phase22_report.add_argument("--analysis-dir", required=True)
     phase22_report.set_defaults(func=_phase22_report)
+    phase221 = commands.add_parser("phase221-publish")
+    phase221.add_argument("--source-analysis", required=True)
+    phase221.set_defaults(func=_phase221_publish)
+    phase221_validate = commands.add_parser("phase221-validate")
+    phase221_validate.add_argument("--publication-dir", required=True)
+    phase221_validate.set_defaults(func=_phase221_validate)
     compare = commands.add_parser("compare-runs")
     compare.add_argument("--analysis-dir", action="append", required=True)
     compare.add_argument("--output-dir")
