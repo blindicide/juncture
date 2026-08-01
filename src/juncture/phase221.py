@@ -186,12 +186,16 @@ def _architecture_figure(summary: pd.DataFrame, figures: Path, manifest: list[di
     for language in ("en", "ru"):
         fig, axis = plt.subplots(figsize=(7, 4.2)); bottom = np.zeros(len(rows))
         names = [ARCHITECTURE_LABELS[value][language] for value in rows.arrival_scheduling_mode]
+        if language == "ru":
+            names = ["Предварительное добавление\nпоступлений", "Последовательное планирование\nпоступлений"]
+            fig.set_size_inches(8.5, 4.5)
         for (key, english, russian), color in zip(ARCHITECTURE_CATEGORIES, colors, strict=True):
             values = rows[f"{key}_percent"].to_numpy()
             axis.bar(names, values, bottom=bottom, color=color, edgecolor="black", linewidth=.5, label=english if language == "en" else russian)
             bottom += values
         axis.set_ylim(0, 100); axis.set_ylabel("Paired configurations (%)" if language == "en" else "Парные конфигурации (%)")
         axis.legend(frameon=False, fontsize=8, ncols=2); axis.grid(axis="y", color="0.9", linewidth=.6)
+        axis.tick_params(axis="x", labelsize=8 if language == "ru" else 10)
         _save_figure(fig, figures, f"architecture_match_{language}", {**metadata, "language": language}, manifest)
 
 
