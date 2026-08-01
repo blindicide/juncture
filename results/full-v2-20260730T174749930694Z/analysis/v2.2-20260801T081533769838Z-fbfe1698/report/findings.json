@@ -1,0 +1,56 @@
+[
+  {
+    "id": "service_bias_relationship",
+    "publication_text": "Signed service-duration error is descriptively associated with midpoint loss bias.",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "source_analysis": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "table": "derived/timing_relationships.csv",
+    "filters": "preload_all, AF/DF paired",
+    "grouping": "configuration",
+    "aggregation": "mean of 30 workload pairs",
+    "units": "loss probability per time error",
+    "estimate": 0.2829222721025486,
+    "ci": [
+      0.23713116115567512,
+      0.3287133830494221
+    ],
+    "n": 648,
+    "commit": "fbfe1698"
+  },
+  {
+    "id": "complete_case_scaling",
+    "publication_text": "Complete-case fine-delta workload exponents are reported with zero-censoring disclosed.",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "source_analysis": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "table": "derived/collision_zero_censoring_audit.csv",
+    "filters": "preload_all; positive collision rates only",
+    "grouping": "workload-design",
+    "aggregation": "complete-case mean",
+    "units": "log-log exponent",
+    "estimate": 0.9280284037487458,
+    "ci": [
+      0.9231536553910679,
+      0.9328956417704433
+    ],
+    "n": 1161,
+    "commit": "fbfe1698"
+  },
+  {
+    "id": "critical_predictor",
+    "publication_text": "Critical rate remains an association rather than a direct estimator.",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "source_analysis": "v2-20260731T155643071963Z-2e8b6e3ea6",
+    "table": "derived/predictor_models_retained.csv",
+    "filters": "preload_all configurations",
+    "grouping": "configuration",
+    "aggregation": "retained model",
+    "units": "loss probability per critical rate",
+    "estimate": 0.4549963914332999,
+    "ci": [
+      0.4537515819817469,
+      0.4562070583723092
+    ],
+    "n": 648,
+    "commit": "fbfe1698"
+  }
+]

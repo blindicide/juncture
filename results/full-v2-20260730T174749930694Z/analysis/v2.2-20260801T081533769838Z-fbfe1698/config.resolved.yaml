@@ -1,0 +1,5 @@
+fine_delta_max: 0.003
+focused_selection_rule: latest verified completed schema-v2 insertion-architecture
+  run with AF, DF, insertion_order and both architectures
+primary_architecture: preload_all
+schema: phase_ii_2
