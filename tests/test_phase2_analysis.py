@@ -5,6 +5,7 @@ import pandas as pd
 from juncture.analysis_v2 import AnalysisConfig, _predictor_rows, _scaling, analyze_run_v2
 from juncture.campaign import create_run, execute_run
 from juncture.config import CampaignConfig
+from juncture.phase22 import _censoring
 from juncture.regression import fit_grouped_ols
 from juncture.verification import verify_run
 
@@ -76,3 +77,23 @@ def test_predictors_aggregate_paired_workloads_to_one_configuration_row() -> Non
     assert len(configurations) == 1
     assert configurations.n_workloads.item() == 4
     assert configurations.analysis_configuration_id.is_unique
+
+
+def test_phase22_zero_audit_keeps_zeros_out_of_log_fit_without_epsilon() -> None:
+    rows = pd.DataFrame(
+        {
+            "workload_id": ["w"] * 3,
+            "rho": [0.8] * 3,
+            "capacity": [4] * 3,
+            "quantizer": ["floor"] * 3,
+            "arrival_scheduling_mode": ["preload_all"] * 3,
+            "delta": [0.001, 0.002, 0.003],
+            "policy_neutral_collision_rate": [0.0, 0.02, 0.01],
+        }
+    )
+    audit, summary, condition = _censoring(rows)
+    assert audit.iloc[0].status == "one_missing"
+    assert audit.iloc[0].positive_fine_deltas == 2
+    assert audit.iloc[0].min_included_delta == 0.002
+    assert summary.n.sum() == 1
+    assert condition.iloc[0].positive_fine_deltas == 2

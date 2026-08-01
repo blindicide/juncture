@@ -102,6 +102,16 @@ def _report_assets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _phase22_analyze(args: argparse.Namespace) -> int:
+    from .phase22 import analyze_phase22
+
+    created = analyze_phase22(
+        Path(args.run_dir), Path(args.baseline_analysis), Path(args.focused_run) if args.focused_run else None
+    )
+    print(created)
+    return 0
+
+
 def _compare_runs(args: argparse.Namespace) -> int:
     from .verification import compare_runs
 
@@ -164,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
     report_assets = commands.add_parser("report-assets")
     report_assets.add_argument("--analysis-dir", required=True)
     report_assets.set_defaults(func=_report_assets)
+    phase22 = commands.add_parser("phase22-analyze")
+    phase22.add_argument("--run-dir", required=True)
+    phase22.add_argument("--baseline-analysis", required=True)
+    phase22.add_argument("--focused-run")
+    phase22.set_defaults(func=_phase22_analyze)
     compare = commands.add_parser("compare-runs")
     compare.add_argument("--analysis-dir", action="append", required=True)
     compare.add_argument("--output-dir")
