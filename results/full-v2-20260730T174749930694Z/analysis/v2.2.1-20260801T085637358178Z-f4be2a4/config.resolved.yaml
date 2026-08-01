@@ -1,0 +1,8 @@
+critical_figure:
+  n: 648
+  x: critical_acceptance_difference_rate_per_arrival
+  y: mean_absolute_policy_gap
+primary_architecture: preload_all
+scaling_selection_rule: rho=1.0, K=8 central configured condition
+schema: phase_ii_2_1
+source_analysis: v2.2-20260801T081533769838Z-fbfe1698

@@ -1,0 +1,38 @@
+{
+  "source_analysis": "results/full-v2-20260730T174749930694Z/analysis/v2.2-20260801T081533769838Z-fbfe1698",
+  "source_analysis_provenance_sha256": "1d1f6a64a7d023cd34321a88910186e030bd2c9a19902533898a17eea83978df",
+  "source_derived_sha256": {
+    "derived/collision_condition_exponents.csv": "bc5e902a7d68790cad502a18217e5fa233fb80d233fa569ebf963b1e394fb8c3",
+    "derived/collision_zero_censoring_audit.csv": "1cb4ea6a09bbb3a17e718a8aac3d39a94e2df845bec8f9c56ef0389e4dbfb953",
+    "derived/collision_zero_censoring_summary.csv": "b4e305b076c8f8ff17860a2ac7d58545c36e259b8503b0ba3fd0fe45b6102572",
+    "derived/exact_validation_retained.csv": "78e1bbed165176014acfd056d510be089bc3e7f9b21efa5563919087c94a7678",
+    "derived/explicit_architecture_stability.parquet": "038906d8a8ad2f0e4de0f032926ad38c268f8864f1f1aac3d831db26214994c8",
+    "derived/insertion_architecture_pairs.parquet": "cf7b6a72ddba9a50fc0b28b09cc79ec10c4b0d3ace5be5a767f5c9f22bf887a2",
+    "derived/insertion_architecture_summary.csv": "ab63b3b0c61831a4e505f04a35e8532d6922ea035197f5cb1b899f1c6ea64448",
+    "derived/predictor_configurations_retained.csv": "ebb0654147fe9a154d936f41d8d6defe6c6ee4eaa865b5caf9136f02cb032ba0",
+    "derived/predictor_models_retained.csv": "f6140a275907a9ae1b15b3049b31c445cdbe3853a1a6e39a1adc8c6ceeea599b",
+    "derived/timing_bias_configuration.parquet": "50ecf5037dc0b19879003d270e7f5aaeb49f8abc5d4765c59a17882475054648",
+    "derived/timing_bias_workload_pairs.parquet": "b4034e0de384c89ba0f0d177dfeb58cf9272a5a6b6e51f4162b10e4e4a0c29ed",
+    "derived/timing_relationships.csv": "13dd225edc4d02d10f4ea1bbccc174429ee77e58502e16dce05dbd5913a92535"
+  },
+  "source_runs": {
+    "baseline": {
+      "path": "results/full-v2-20260730T174749930694Z/analysis/v2-20260731T155643071963Z-2e8b6e3ea6",
+      "provenance_hash": "b128a9ebe91256cd6b5d797585c87ce0a014dd8555efc63dca2d6dc91ec89924"
+    },
+    "focused_insertion": {
+      "path": "results/insertion-architecture-v2-20260730T092338223105Z",
+      "raw_hashes": {
+        "exact_results.parquet": "1ed8ad3831dbdd3500642ee81900783b43f515b8770e12358384039c0733269c",
+        "quantized_results.parquet": "aa30fe2cea09b8c8af6cc5de78de1ba8610d08fd410ca365d72f1c21ec3e56ad"
+      }
+    },
+    "principal": {
+      "path": "results/full-v2-20260730T174749930694Z",
+      "raw_hashes": {
+        "exact_results.parquet": "8451d2a5ebeb8b527169f241347ff3393031e2d343410f887497e0451fcab953",
+        "quantized_results.parquet": "5aaac2e35f601a9a8e3031e032f3a00bcd397cc7cc9620299e3aa9c6590ebcbd"
+      }
+    }
+  }
+}

@@ -1,0 +1,494 @@
+[
+  {
+    "aggregation": "saved workload-paired configuration model",
+    "ci": {
+      "high": 0.0382214182116924,
+      "low": 0.0378828168994054,
+      "method": "saved replication-level bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "coefficient": 0.0380521694396377,
+      "cv_mae": null,
+      "cv_rmse": 0.0035675962309885,
+      "hc3_standard_error": 0.0064858205495837,
+      "r_squared": 0.2403652877014775
+    },
+    "filters": "primary architecture; saved retained predictor model",
+    "finding_id": "predictor_total_coefficient",
+    "grouping_keys": "analysis_configuration_id",
+    "publication_text": "The retained total predictor coefficient is selected by the canonical term `total_collision_rate`, not by row position or intercept.",
+    "row_selector": "model=total; coefficient_total_collision_rate; term != const",
+    "sample_size": {
+      "n": 648
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/predictor_models_retained.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss-probability gap per predictor unit"
+  },
+  {
+    "aggregation": "saved workload-paired configuration model",
+    "ci": {
+      "high": 0.0751605820334345,
+      "low": 0.0744642625171175,
+      "method": "saved replication-level bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "coefficient": 0.0748084413379901,
+      "cv_mae": null,
+      "cv_rmse": 0.0036210434342292,
+      "hc3_standard_error": 0.0128013128493205,
+      "r_squared": 0.2156994394645258
+    },
+    "filters": "primary architecture; saved retained predictor model",
+    "finding_id": "predictor_mixed_coefficient",
+    "grouping_keys": "analysis_configuration_id",
+    "publication_text": "The retained mixed predictor coefficient is selected by the canonical term `mixed_collision_rate`, not by row position or intercept.",
+    "row_selector": "model=mixed; coefficient_mixed_collision_rate; term != const",
+    "sample_size": {
+      "n": 648
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/predictor_models_retained.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss-probability gap per predictor unit"
+  },
+  {
+    "aggregation": "saved workload-paired configuration model",
+    "ci": {
+      "high": 0.4562070583723092,
+      "low": 0.4537515819817469,
+      "method": "saved replication-level bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "coefficient": 0.4549963914332999,
+      "cv_mae": null,
+      "cv_rmse": 0.0016198964528441,
+      "hc3_standard_error": 0.0229716415407328,
+      "r_squared": 0.8447784824772924
+    },
+    "filters": "primary architecture; saved retained predictor model",
+    "finding_id": "predictor_critical_coefficient",
+    "grouping_keys": "analysis_configuration_id",
+    "publication_text": "The retained critical predictor coefficient is selected by the canonical term `critical_collision_rate`, not by row position or intercept.",
+    "row_selector": "model=critical; coefficient_critical_collision_rate; term != const",
+    "sample_size": {
+      "n": 648
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/predictor_models_retained.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss-probability gap per predictor unit"
+  },
+  {
+    "aggregation": "saved workload-paired configuration model",
+    "ci": {
+      "high": 0.5467056314997242,
+      "low": 0.5433841178234593,
+      "method": "saved replication-level bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "coefficient": 0.5450458073372376,
+      "cv_mae": null,
+      "cv_rmse": 0.0013568498364528,
+      "hc3_standard_error": 0.0215721895631533,
+      "r_squared": 0.8925305839088311
+    },
+    "filters": "primary architecture; saved retained predictor model",
+    "finding_id": "predictor_multivariable_coefficient",
+    "grouping_keys": "analysis_configuration_id",
+    "publication_text": "The retained multivariable predictor coefficient is selected by the canonical term `critical_collision_rate`, not by row position or intercept.",
+    "row_selector": "model=multivariable; coefficient_critical_collision_rate; term != const",
+    "sample_size": {
+      "n": 648
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/predictor_models_retained.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss-probability gap per predictor unit"
+  },
+  {
+    "aggregation": "one saved condition-level log-log fit",
+    "ci": {
+      "available": false,
+      "reason": "condition exponent table has no saved interval"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "exponent": 0.9977951070437552,
+      "r_squared": 0.9999265913820256
+    },
+    "filters": "preload_all; positive condition means; 0 < delta <= 0.003",
+    "finding_id": "condition_scaling_rho_1_k_8",
+    "grouping_keys": "rho, capacity",
+    "publication_text": "The primary collision-frequency figure shows the selected central rho=1.0, K=8 condition on logarithmic delta and frequency axes.",
+    "row_selector": "rho=1.0; capacity=8",
+    "sample_size": {
+      "fine_deltas": 6
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/collision_condition_exponents.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "log-log exponent"
+  },
+  {
+    "aggregation": "saved category summary",
+    "ci": {
+      "high": 0.9329108282978296,
+      "low": 0.9232233818255852,
+      "method": "saved bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "count": 1161,
+      "mean_exponent": 0.9280284037487458,
+      "percent": 53.75
+    },
+    "filters": "primary fine-delta workload fits",
+    "finding_id": "censor_complete",
+    "grouping_keys": "workload_id, rho, capacity, quantizer",
+    "publication_text": "The zero-censoring audit retains the `complete` category separately.",
+    "row_selector": "status=complete",
+    "sample_size": {
+      "workload_design_rows": 1161
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/collision_zero_censoring_summary.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "percent and log-log exponent"
+  },
+  {
+    "aggregation": "saved category summary",
+    "ci": {
+      "high": 1.0363359073127707,
+      "low": 1.0211165350894498,
+      "method": "saved bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "count": 779,
+      "mean_exponent": 1.0286117829685897,
+      "percent": 36.06481481481482
+    },
+    "filters": "primary fine-delta workload fits",
+    "finding_id": "censor_one_missing",
+    "grouping_keys": "workload_id, rho, capacity, quantizer",
+    "publication_text": "The zero-censoring audit retains the `one_missing` category separately.",
+    "row_selector": "status=one_missing",
+    "sample_size": {
+      "workload_design_rows": 779
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/collision_zero_censoring_summary.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "percent and log-log exponent"
+  },
+  {
+    "aggregation": "saved category summary",
+    "ci": {
+      "high": 1.0998063046814213,
+      "low": 1.0645620673691971,
+      "method": "saved bootstrap"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "count": 220,
+      "mean_exponent": 1.08223733060228,
+      "percent": 10.185185185185183
+    },
+    "filters": "primary fine-delta workload fits",
+    "finding_id": "censor_two_or_more_missing",
+    "grouping_keys": "workload_id, rho, capacity, quantizer",
+    "publication_text": "The zero-censoring audit retains the `two_or_more_missing` category separately.",
+    "row_selector": "status=two_or_more_missing",
+    "sample_size": {
+      "workload_design_rows": 220
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/collision_zero_censoring_summary.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "percent and log-log exponent"
+  },
+  {
+    "aggregation": "saved HC3 OLS and grouped validation",
+    "ci": {
+      "high": 0.3287133830494221,
+      "low": 0.2371311611556751,
+      "method": "saved HC3 interval"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "cv_rmse": 0.0025300639459907,
+      "pearson": 0.8520588904231846,
+      "r_squared": 0.7260043527491877,
+      "slope": 0.2829222721025486
+    },
+    "filters": "primary configuration means",
+    "finding_id": "service_error_bias_relationship",
+    "grouping_keys": "rho, capacity, delta, quantizer",
+    "publication_text": "Signed service-duration error has a saved descriptive relationship with midpoint bias; no causal interpretation is made.",
+    "row_selector": "model=service_signed",
+    "sample_size": {
+      "configurations": 648
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/timing_relationships.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "bias per normalized service-time error"
+  },
+  {
+    "aggregation": "mean over configurations",
+    "ci": {
+      "available": false,
+      "reason": "publication table is a saved configuration-level mean"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_midpoint_bias": 0.22550262345679017,
+      "absolute_policy_gap": 0.1173503086419753,
+      "absolute_service_error": 0.007923144711672834,
+      "pearson": 0.8520588904231846,
+      "signed_midpoint_bias": -0.22012145061728397,
+      "signed_service_error": -0.007923144711672834,
+      "zero_tick_fraction": 2.431508614623636e-08
+    },
+    "filters": "primary configuration means",
+    "finding_id": "quantizer_floor",
+    "grouping_keys": "quantizer",
+    "publication_text": "The floor quantizer row reports configuration-level midpoint bias, ordering gap, service-time error, and zero-tick fraction.",
+    "row_selector": "quantizer=floor",
+    "sample_size": {
+      "configurations": 216
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/quantizer_summary.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points; normalized service time"
+  },
+  {
+    "aggregation": "mean over configurations",
+    "ci": {
+      "available": false,
+      "reason": "publication table is a saved configuration-level mean"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_midpoint_bias": 0.014667746913580294,
+      "absolute_policy_gap": 0.11522067901234571,
+      "absolute_service_error": 0.00401217989739275,
+      "pearson": 0.8520588904231846,
+      "signed_midpoint_bias": -0.001273611111111139,
+      "signed_service_error": -5.0716262468181575e-05,
+      "zero_tick_fraction": 2.574064998968646e-08
+    },
+    "filters": "primary configuration means",
+    "finding_id": "quantizer_nearest",
+    "grouping_keys": "quantizer",
+    "publication_text": "The nearest quantizer row reports configuration-level midpoint bias, ordering gap, service-time error, and zero-tick fraction.",
+    "row_selector": "quantizer=nearest",
+    "sample_size": {
+      "configurations": 216
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/quantizer_summary.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points; normalized service time"
+  },
+  {
+    "aggregation": "mean over configurations",
+    "ci": {
+      "available": false,
+      "reason": "publication table is a saved configuration-level mean"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_midpoint_bias": 0.2410185185185185,
+      "absolute_policy_gap": 0.11252592592592595,
+      "absolute_service_error": 0.008125948779533428,
+      "pearson": 0.8520588904231846,
+      "signed_midpoint_bias": 0.23477901234567897,
+      "signed_service_error": 0.008125948779533427,
+      "zero_tick_fraction": 2.5840067334996352e-08
+    },
+    "filters": "primary configuration means",
+    "finding_id": "quantizer_ceiling",
+    "grouping_keys": "quantizer",
+    "publication_text": "The ceiling quantizer row reports configuration-level midpoint bias, ordering gap, service-time error, and zero-tick fraction.",
+    "row_selector": "quantizer=ceiling",
+    "sample_size": {
+      "configurations": 216
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/quantizer_summary.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points; normalized service time"
+  },
+  {
+    "aggregation": "mean of configuration-level quantities; ratios of means",
+    "ci": {
+      "available": false,
+      "reason": "compact publication comparison uses saved means"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_bias_pp": 0.8069129629629628,
+      "bias_gap_ratio": 0.339361733612258,
+      "bias_half_width_ratio": 0.678723467224516,
+      "half_width_pp": 1.1888685185185186,
+      "policy_gap_pp": 2.377737037037037,
+      "signed_bias_pp": 0.010364814814814579
+    },
+    "filters": "delta=0.1; primary architecture",
+    "finding_id": "capacity_delta_01_k_1",
+    "grouping_keys": "capacity",
+    "publication_text": "At \u03b4=0.1 and K=1, the table compares absolute ordering gap, midpoint bias, and their ratios within the primary architecture.",
+    "row_selector": "capacity=1",
+    "sample_size": {
+      "configurations": 18
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/capacity_delta_01.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points and dimensionless ratios"
+  },
+  {
+    "aggregation": "mean of configuration-level quantities; ratios of means",
+    "ci": {
+      "available": false,
+      "reason": "compact publication comparison uses saved means"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_bias_pp": 0.8200314814814815,
+      "bias_gap_ratio": 2.389755960668761,
+      "bias_half_width_ratio": 4.779511921337522,
+      "half_width_pp": 0.17157222222222218,
+      "policy_gap_pp": 0.34314444444444436,
+      "signed_bias_pp": 0.030264814814814862
+    },
+    "filters": "delta=0.1; primary architecture",
+    "finding_id": "capacity_delta_01_k_4",
+    "grouping_keys": "capacity",
+    "publication_text": "At \u03b4=0.1 and K=4, the table compares absolute ordering gap, midpoint bias, and their ratios within the primary architecture.",
+    "row_selector": "capacity=4",
+    "sample_size": {
+      "configurations": 18
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/capacity_delta_01.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points and dimensionless ratios"
+  },
+  {
+    "aggregation": "mean of configuration-level quantities; ratios of means",
+    "ci": {
+      "available": false,
+      "reason": "compact publication comparison uses saved means"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_bias_pp": 1.01685,
+      "bias_gap_ratio": 11.065636209745675,
+      "bias_half_width_ratio": 22.13127241949135,
+      "half_width_pp": 0.04594629629629631,
+      "policy_gap_pp": 0.09189259259259262,
+      "signed_bias_pp": 0.04978333333333331
+    },
+    "filters": "delta=0.1; primary architecture",
+    "finding_id": "capacity_delta_01_k_8",
+    "grouping_keys": "capacity",
+    "publication_text": "At \u03b4=0.1 and K=8, the table compares absolute ordering gap, midpoint bias, and their ratios within the primary architecture.",
+    "row_selector": "capacity=8",
+    "sample_size": {
+      "configurations": 18
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/capacity_delta_01.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points and dimensionless ratios"
+  },
+  {
+    "aggregation": "mean of configuration-level quantities; ratios of means",
+    "ci": {
+      "available": false,
+      "reason": "compact publication comparison uses saved means"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "absolute_bias_pp": 1.1836592592592594,
+      "bias_gap_ratio": 49.76455932731235,
+      "bias_half_width_ratio": 99.5291186546247,
+      "half_width_pp": 0.011892592592592597,
+      "policy_gap_pp": 0.023785185185185194,
+      "signed_bias_pp": 0.0833222222222221
+    },
+    "filters": "delta=0.1; primary architecture",
+    "finding_id": "capacity_delta_01_k_16",
+    "grouping_keys": "capacity",
+    "publication_text": "At \u03b4=0.1 and K=16, the table compares absolute ordering gap, midpoint bias, and their ratios within the primary architecture.",
+    "row_selector": "capacity=16",
+    "sample_size": {
+      "configurations": 18
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "tables/capacity_delta_01.csv",
+    "source_run": "full-v2-20260730T174749930694Z",
+    "units": "packet-loss percentage points and dimensionless ratios"
+  },
+  {
+    "aggregation": "exact integer equality category percentages",
+    "ci": {
+      "available": false,
+      "reason": "complete focused paired count audit"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "af_only_percent": 93.88888888888889,
+      "both_percent": 6.111111111111111,
+      "df_only_percent": 0.0,
+      "neither_percent": 0.0
+    },
+    "filters": "AF, DF, insertion policy; focused architecture run",
+    "finding_id": "architecture_preload_all",
+    "grouping_keys": "workload_id, rho, capacity, delta, quantizer",
+    "publication_text": "Insertion matching uses mutually exclusive exact-count categories from the validated focused architecture summary.",
+    "row_selector": "arrival_scheduling_mode=preload_all",
+    "sample_size": {
+      "pairs": 540
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/insertion_architecture_summary.csv",
+    "source_run": "insertion-architecture-v2-20260730T092338223105Z",
+    "units": "percent of paired configurations"
+  },
+  {
+    "aggregation": "exact integer equality category percentages",
+    "ci": {
+      "available": false,
+      "reason": "complete focused paired count audit"
+    },
+    "commit": "f4be2a4",
+    "estimate": {
+      "af_only_percent": 0.0,
+      "both_percent": 6.111111111111111,
+      "df_only_percent": 93.88888888888889,
+      "neither_percent": 0.0
+    },
+    "filters": "AF, DF, insertion policy; focused architecture run",
+    "finding_id": "architecture_schedule_next_after_transition",
+    "grouping_keys": "workload_id, rho, capacity, delta, quantizer",
+    "publication_text": "Insertion matching uses mutually exclusive exact-count categories from the validated focused architecture summary.",
+    "row_selector": "arrival_scheduling_mode=schedule_next_after_transition",
+    "sample_size": {
+      "pairs": 540
+    },
+    "source_analysis": "v2.2-20260801T081533769838Z-fbfe1698",
+    "source_file": "derived/insertion_architecture_summary.csv",
+    "source_run": "insertion-architecture-v2-20260730T092338223105Z",
+    "units": "percent of paired configurations"
+  }
+]
