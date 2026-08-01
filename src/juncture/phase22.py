@@ -66,11 +66,14 @@ def _paired_primary(q: pd.DataFrame, exact: pd.DataFrame) -> pd.DataFrame:
 def _timing_configuration(paired: pd.DataFrame) -> pd.DataFrame:
     keys = ["configuration_id_v22", "rho", "capacity", "delta", "quantizer", "arrival_scheduling_mode"]
     numeric = ["midpoint_signed_loss_bias", "absolute_midpoint_loss_bias", "mean_signed_service_duration_error_pair", "mean_absolute_service_duration_error_pair", "mean_signed_arrival_error_pair", "mean_absolute_arrival_error_pair", "service_zero_tick_fraction_pair", "af_df_loss_gap", "policy_neutral_collision_rate", "critical_rate", "mixed_rate", "inverse_capacity"]
-    grouped = paired.groupby(keys, as_index=False)
-    out = grouped[numeric].mean()
-    out["replication_count"] = grouped.size().to_numpy()
-    out["median_midpoint_signed_loss_bias"] = grouped.midpoint_signed_loss_bias.median().to_numpy()
-    out["se_midpoint_signed_loss_bias"] = grouped.midpoint_signed_loss_bias.sem().fillna(0).to_numpy()
+    grouped = paired.groupby(keys, sort=True)
+    out = grouped.agg(
+        **{column: (column, "mean") for column in numeric},
+        replication_count=("workload_id", "size"),
+        median_midpoint_signed_loss_bias=("midpoint_signed_loss_bias", "median"),
+        se_midpoint_signed_loss_bias=("midpoint_signed_loss_bias", "sem"),
+    ).reset_index()
+    out["se_midpoint_signed_loss_bias"] = out.se_midpoint_signed_loss_bias.fillna(0)
     intervals = [_ci(g.midpoint_signed_loss_bias, 20260801 + i) for i, (_, g) in enumerate(grouped)]
     out["bias_bootstrap_ci95_low"] = [x[0] for x in intervals]
     out["bias_bootstrap_ci95_high"] = [x[1] for x in intervals]
