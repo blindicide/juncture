@@ -5,7 +5,7 @@ import pandas as pd
 from juncture.analysis_v2 import AnalysisConfig, _predictor_rows, _scaling, analyze_run_v2
 from juncture.campaign import create_run, execute_run
 from juncture.config import CampaignConfig
-from juncture.phase22 import _censoring
+from juncture.phase22 import _FINDING_FIELDS, _censoring, _report_entry
 from juncture.regression import fit_grouped_ols
 from juncture.verification import verify_run
 
@@ -97,3 +97,15 @@ def test_phase22_zero_audit_keeps_zeros_out_of_log_fit_without_epsilon() -> None
     assert audit.iloc[0].min_included_delta == 0.002
     assert summary.n.sum() == 1
     assert condition.iloc[0].positive_fine_deltas == 2
+
+
+def test_phase22_report_findings_require_traceability_fields() -> None:
+    entry = {field: "present" for field in _FINDING_FIELDS}
+    assert _report_entry(**entry) == entry
+    entry.pop("commit")
+    try:
+        _report_entry(**entry)
+    except ValueError as error:
+        assert "commit" in str(error)
+    else:
+        raise AssertionError("report entry without a commit was accepted")

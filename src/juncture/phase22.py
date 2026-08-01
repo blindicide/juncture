@@ -164,6 +164,248 @@ def _figures(target: Path, timing: pd.DataFrame, audit: pd.DataFrame, condition:
     pd.DataFrame(manifest).to_csv(target/"manifests"/"figures.csv",index=False)
 
 
+_FINDING_FIELDS = {
+    "finding_id", "publication_text", "source_run", "source_analysis", "source_table",
+    "source_file", "filters", "grouping_keys", "aggregation", "units", "estimate",
+    "ci", "sample_size", "commit",
+}
+
+
+def _report_entry(**entry: Any) -> dict[str, Any]:
+    """Keep machine-readable publication claims complete and auditable."""
+    missing = _FINDING_FIELDS.difference(entry)
+    if missing:
+        raise ValueError(f"incomplete Phase II.2 finding: {sorted(missing)}")
+    return entry
+
+
+def _format_number(value: Any, digits: int = 6) -> str:
+    if isinstance(value, (float, np.floating)):
+        return f"{value:.{digits}g}"
+    return str(value)
+
+
+def _ci_entry(low: float, high: float, method: str) -> dict[str, Any]:
+    return {"available": True, "level": 0.95, "method": method, "low": float(low), "high": float(high)}
+
+
+def _unavailable(reason: str) -> dict[str, Any]:
+    return {"available": False, "reason": reason}
+
+
+def _report_manifest(target: Path) -> None:
+    artifact: list[dict[str, str]] = []
+    for directory in (target / "derived", target / "figures", target / "tables", target / "report"):
+        artifact.extend(
+            {"path": str(path.relative_to(target)), "sha256": _sha(path)}
+            for path in directory.glob("*")
+            if path.is_file()
+        )
+    pd.DataFrame(artifact).sort_values("path").to_csv(target / "manifests" / "artifacts.csv", index=False)
+
+
+def _finding_markdown(findings: list[dict[str, Any]]) -> str:
+    sections = ["# Phase II.2 findings\n", "All estimates below are descriptive unless explicitly labelled otherwise. `CI unavailable` means the saved derived input does not contain the replication-level information needed to reconstruct that interval without touching raw results.\n"]
+    for item in findings:
+        estimate = json.dumps(item["estimate"], sort_keys=True)
+        ci = item["ci"]
+        ci_text = json.dumps(ci, sort_keys=True)
+        sections.append(
+            f"## {item['finding_id']}\n\n{item['publication_text']}\n\n"
+            f"- Source run: `{item['source_run']}`; source analysis: `{item['source_analysis']}`; commit: `{item['commit']}`.\n"
+            f"- Source table/file: `{item['source_table']}` / `{item['source_file']}`.\n"
+            f"- Filters: {item['filters']}\n"
+            f"- Grouping keys: {item['grouping_keys']}; aggregation: {item['aggregation']}.\n"
+            f"- Units: {item['units']}; sample size: `{json.dumps(item['sample_size'], sort_keys=True)}`.\n"
+            f"- Estimate: `{estimate}`. CI: `{ci_text}`.\n"
+        )
+    return "\n".join(sections)
+
+
+def refresh_phase22_report(target: Path) -> None:
+    """Refresh Phase II.2 narrative assets from its existing derived outputs only."""
+    target = Path(target)
+    required = [
+        target / "provenance.json", target / "source_runs.json",
+        target / "derived" / "timing_bias_workload_pairs.parquet",
+        target / "derived" / "timing_bias_configuration.parquet",
+        target / "derived" / "timing_relationships.csv",
+        target / "derived" / "collision_zero_censoring_audit.csv",
+        target / "derived" / "collision_zero_censoring_summary.csv",
+        target / "derived" / "collision_condition_exponents.csv",
+        target / "derived" / "insertion_architecture_summary.csv",
+        target / "derived" / "explicit_architecture_stability.parquet",
+        target / "derived" / "predictor_models_retained.csv",
+        target / "derived" / "exact_validation_retained.csv",
+    ]
+    absent = [str(path) for path in required if not path.exists()]
+    if absent:
+        raise FileNotFoundError(f"cannot refresh Phase II.2 report; missing {absent}")
+    provenance = json.loads((target / "provenance.json").read_text(encoding="utf-8"))
+    sources = json.loads((target / "source_runs.json").read_text(encoding="utf-8"))
+    principal = Path(sources["principal"]["path"]).name
+    baseline = Path(sources["baseline"]["path"]).name
+    focused = Path(sources["focused_insertion"]["path"]).name
+    commit = str(provenance["git_commit"])
+    paired = pd.read_parquet(target / "derived" / "timing_bias_workload_pairs.parquet")
+    timing = pd.read_parquet(target / "derived" / "timing_bias_configuration.parquet")
+    relationships = pd.read_csv(target / "derived" / "timing_relationships.csv")
+    audit = pd.read_csv(target / "derived" / "collision_zero_censoring_audit.csv")
+    censor = pd.read_csv(target / "derived" / "collision_zero_censoring_summary.csv")
+    condition = pd.read_csv(target / "derived" / "collision_condition_exponents.csv")
+    architecture = pd.read_csv(target / "derived" / "insertion_architecture_summary.csv")
+    explicit = pd.read_parquet(target / "derived" / "explicit_architecture_stability.parquet")
+    models = pd.read_csv(target / "derived" / "predictor_models_retained.csv")
+    theory = pd.read_csv(target / "derived" / "exact_validation_retained.csv")
+    service = relationships.loc[relationships.model.eq("service_signed")].iloc[0]
+    complete = audit.loc[audit.status.eq("complete"), "exponent"].dropna()
+    condition_ci = _ci(condition.exponent, 20260821)
+    complete_ci = _ci(complete, 20260822)
+    exact_max = theory.loc[theory.absolute_loss_difference.idxmax()]
+    source_table = "derived/timing_bias_configuration.parquet"
+    primary_filter = "arrival_scheduling_mode=preload_all; policies=arrival_first,departure_first; exact reference joined by workload_id"
+    findings: list[dict[str, Any]] = []
+    findings.append(_report_entry(
+        finding_id="H1_exact_engine_validation", publication_text=(
+            "H1 is supported only as a point-estimate agreement check: the largest saved absolute exact-loss difference from M/M/1/K theory is reported below; no uncertainty interval was retained for this comparison."
+        ), source_run=principal, source_analysis=baseline, source_table="tables/exact_validation.csv", source_file="derived/exact_validation_retained.csv",
+        filters="theory_applicable=true; M/M/1/K", grouping_keys="rho, capacity", aggregation="one saved exact-result mean per condition",
+        units="absolute packet-loss-probability difference", estimate={"max_absolute_difference": float(exact_max.absolute_loss_difference), "rho": float(exact_max.rho), "capacity": int(exact_max.capacity), "condition_rows": len(theory), "replications_per_condition": int(theory.n.min())},
+        ci=_unavailable("the retained exact-validation table contains condition means and n, but no replication-level values or saved CI"), sample_size={"condition_rows": len(theory), "replications_per_condition": int(theory.n.min())}, commit=commit,
+    ))
+    findings.append(_report_entry(
+        finding_id="H2_service_error_bias_relationship", publication_text=(
+            "H2 is supported as a descriptive association: configuration-mean signed service-duration error and midpoint loss bias are strongly positively associated in the preload_all primary analysis; this is not a causal estimate."
+        ), source_run=principal, source_analysis=target.name, source_table="derived/timing_relationships.csv", source_file=source_table,
+        filters=primary_filter, grouping_keys="rho, capacity, delta, quantizer, arrival_scheduling_mode", aggregation="AF/DF average within each workload, then mean of 30 paired workloads per configuration; OLS with HC3 and leave-one-configuration-out CV",
+        units="midpoint loss-probability bias per signed service-duration error", estimate={"pearson": float(service.pearson), "spearman": float(service.spearman), "slope": float(service.slope), "intercept": float(service.intercept), "hc3_se": float(service.hc3_se_slope), "r_squared": float(service.r_squared), "cv_rmse": float(service.cv_rmse), "cv_mae": float(service.cv_mae), "folds": int(service.folds)},
+        ci=_ci_entry(service.hc3_ci95_low, service.hc3_ci95_high, "HC3 normal-approximation interval for OLS slope"), sample_size={"configuration_rows": int(service.n), "paired_workload_rows": len(paired), "replications_per_configuration": int(timing.replication_count.min())}, commit=commit,
+    ))
+    for quantizer, group in timing.groupby("quantizer", sort=True):
+        bias_ci = _ci(group.midpoint_signed_loss_bias, 20260830 + len(findings))
+        gap_ci = _ci(group.af_df_loss_gap, 20260840 + len(findings))
+        findings.append(_report_entry(
+            finding_id=f"H2_quantizer_{quantizer}", publication_text=(
+                f"H2 quantizer-stratified descriptive result ({quantizer}): the configuration-mean midpoint bias and AF–DF loss gap are reported separately; this stratum does not establish a mechanism."
+            ), source_run=principal, source_analysis=target.name, source_table="tables/quantizer_bias_order_gap.csv", source_file=source_table,
+            filters=f"{primary_filter}; quantizer={quantizer}", grouping_keys="rho, capacity, delta, quantizer", aggregation="mean across configuration rows; bootstrap over configurations",
+            units="packet-loss probability", estimate={"mean_midpoint_signed_bias": float(group.midpoint_signed_loss_bias.mean()), "mean_af_df_loss_gap": float(group.af_df_loss_gap.mean())},
+            ci={"midpoint_bias": _ci_entry(*bias_ci, "bootstrap over configuration means"), "af_df_gap": _ci_entry(*gap_ci, "bootstrap over configuration means")}, sample_size={"configuration_rows": len(group), "paired_workload_rows": int(group.replication_count.sum())}, commit=commit,
+        ))
+    for row in censor.itertuples(index=False):
+        findings.append(_report_entry(
+            finding_id=f"H3_zero_censoring_{row.status}", publication_text=(
+                f"H3 zero-censoring audit ({row.status}): {int(row.n)} workload-design fits ({row.percent:.3f}%) fall in this category; exponents use positive rates only and do not replace zeros with epsilon."
+            ), source_run=principal, source_analysis=target.name, source_table="tables/collision_zero_censoring.csv", source_file="derived/collision_zero_censoring_summary.csv",
+            filters="preload_all; delta>0 and delta<=0.003; policy-neutral AF/DF collision rate", grouping_keys="workload_id, rho, capacity, quantizer", aggregation="one log-log slope per workload-design using positive fine-delta rates",
+            units="log-log collision-rate exponent", estimate={"count": int(row.n), "percent": float(row.percent), "mean_exponent": float(row.mean_exponent), "median_exponent": float(row.median_exponent)}, ci=_ci_entry(row.bootstrap_ci95_low, row.bootstrap_ci95_high, "bootstrap over workload-design exponents"), sample_size={"workload_design_rows": len(audit), "category_rows": int(row.n)}, commit=commit,
+        ))
+    findings.append(_report_entry(
+        finding_id="H3_condition_level_scaling", publication_text=(
+            "H3 condition-level scaling is descriptively near linear on the configured fine-delta range after averaging policy-neutral collision rates within condition; it does not imply a universal exponent."
+        ), source_run=principal, source_analysis=target.name, source_table="tables/collision_scaling.csv", source_file="derived/collision_condition_exponents.csv",
+        filters="preload_all; delta>0 and delta<=0.003; positive condition-mean collision rates", grouping_keys="rho, capacity", aggregation="one log-log slope per rho/capacity condition after policy-neutral AF/DF and workload averaging",
+        units="log-log collision-rate exponent", estimate={"mean": float(condition.exponent.mean()), "median": float(condition.exponent.median()), "minimum": float(condition.exponent.min()), "maximum": float(condition.exponent.max()), "mean_r_squared": float(condition.r_squared.mean())}, ci=_ci_entry(*condition_ci, "bootstrap over 24 condition exponents"), sample_size={"condition_rows": len(condition), "fine_deltas_per_condition": int(condition.configured_fine_deltas.min())}, commit=commit,
+    ))
+    findings.append(_report_entry(
+        finding_id="H3_complete_case_scaling", publication_text=(
+            "H3 complete-case workload scaling is lower than the all-condition summary and is reported separately because zero-censoring changes the retained fine-delta support."
+        ), source_run=principal, source_analysis=target.name, source_table="tables/collision_zero_censoring.csv", source_file="derived/collision_zero_censoring_audit.csv",
+        filters="status=complete; preload_all; six positive configured fine deltas", grouping_keys="workload_id, rho, capacity, quantizer", aggregation="mean of one positive-rate log-log slope per complete workload-design",
+        units="log-log collision-rate exponent", estimate={"mean": float(complete.mean()), "median": float(complete.median())}, ci=_ci_entry(*complete_ci, "bootstrap over complete-case workload-design exponents"), sample_size={"complete_case_rows": len(complete), "all_workload_design_rows": len(audit)}, commit=commit,
+    ))
+    for model in models.itertuples(index=False):
+        name = str(model.model)
+        coefficient = next((column for column in models.columns if column.startswith("coefficient_") and pd.notna(getattr(model, column))), None)
+        low = next((column for column in models.columns if column.startswith("bootstrap_ci95_low_coefficient_") and coefficient and column.endswith(coefficient.removeprefix("coefficient_"))), None)
+        high = next((column for column in models.columns if column.startswith("bootstrap_ci95_high_coefficient_") and coefficient and column.endswith(coefficient.removeprefix("coefficient_"))), None)
+        findings.append(_report_entry(
+            finding_id=f"H4_predictor_{name}", publication_text=(
+                f"H4 retained predictor model ({name}) is an association model evaluated by grouped leave-one-configuration-out validation; it is not a direct causal estimator."
+            ), source_run=principal, source_analysis=baseline, source_table="tables/predictor_comparison.csv", source_file="derived/predictor_models_retained.csv",
+            filters="primary preload_all retained predictor configurations", grouping_keys="analysis_configuration_id", aggregation="saved workload-paired configuration model with grouped validation",
+            units="packet-loss-probability gap per model predictor unit", estimate={"r_squared": float(model.r_squared), "cv_rmse": float(model.cv_rmse), "folds": int(model.n_folds), "coefficient_name": coefficient, "coefficient": float(getattr(model, coefficient)) if coefficient else None}, ci=_ci_entry(getattr(model, low), getattr(model, high), "replication-level bootstrap, 1,000 resamples") if low and high else _unavailable("no single coefficient interval applies to this retained model row"), sample_size={"configuration_rows": int(model.n), "folds": int(model.n_folds), "train_test_groups_disjoint": bool(model.train_test_groups_disjoint)}, commit=commit,
+        ))
+    for row in architecture.itertuples(index=False):
+        findings.append(_report_entry(
+            finding_id=f"H5_architecture_{row.arrival_scheduling_mode}", publication_text=(
+                f"H5 insertion-order matching for {row.arrival_scheduling_mode} is descriptive robustness evidence from the focused architecture run; it is not included in primary preload_all timing or scaling observations."
+            ), source_run=focused, source_analysis=target.name, source_table="tables/architecture_comparison.csv", source_file="derived/insertion_architecture_summary.csv",
+            filters=f"arrival_scheduling_mode={row.arrival_scheduling_mode}; policies=AF,DF,insertion_order", grouping_keys="workload_id, rho, capacity, delta, quantizer, arrival_scheduling_mode", aggregation="exact integer equality of accepted/dropped/completed counts; loss distances summarized over pairs",
+            units="percent of paired workload/configurations; absolute packet-loss-probability distance", estimate={"paired_count": int(row.paired_count), "matches_both_percent": float(row.matches_both_percent), "matches_af_only_percent": float(row.matches_af_only_percent), "matches_df_only_percent": float(row.matches_df_only_percent), "matches_neither_percent": float(row.matches_neither_percent), "mean_distance_af": float(row.mean_distance_af), "max_distance_af": float(row.max_distance_af), "mean_distance_df": float(row.mean_distance_df), "max_distance_df": float(row.max_distance_df)}, ci=_unavailable("focused architecture results are paired deterministic count comparisons; no resampling interval was specified or saved"), sample_size={"paired_workload_configuration_rows": int(row.paired_count)}, commit=commit,
+        ))
+    stability = {}
+    for policy in ("arrival_first", "departure_first"):
+        stability[policy] = {
+            "accepted_equal_percent": float(100 * explicit[f"{policy}_accepted_equal"].mean()),
+            "dropped_equal_percent": float(100 * explicit[f"{policy}_dropped_equal"].mean()),
+            "mean_loss_difference": float(explicit[f"{policy}_loss_difference"].mean()),
+            "max_loss_difference": float(explicit[f"{policy}_loss_difference"].max()),
+        }
+    findings.append(_report_entry(
+        finding_id="H5_explicit_policy_stability", publication_text=(
+            "H5 explicit AF and DF policies have identical accepted and dropped counts across the two scheduling architectures in the focused comparison; the recorded loss differences are reported rather than assumed to be zero."
+        ), source_run=focused, source_analysis=target.name, source_table="tables/architecture_comparison.csv", source_file="derived/explicit_architecture_stability.parquet",
+        filters="policies=arrival_first,departure_first; preload_all versus schedule_next_after_transition", grouping_keys="workload_id, rho, capacity, delta, quantizer", aggregation="exact integer equality rates and absolute loss differences across architecture pairs",
+        units="percent exact equality; absolute packet-loss-probability difference", estimate=stability, ci=_unavailable("focused explicit-policy comparison is a complete paired deterministic count audit, not a resampled estimate"), sample_size={"paired_workload_configuration_rows": len(explicit)}, commit=commit,
+    ))
+    findings.append(_report_entry(
+        finding_id="H6_random_order_scope", publication_text=(
+            "H6 is not tested: no random_order policy observation is present in the principal Phase II.2 saved inputs, so no random-order result is inferred or fabricated."
+        ), source_run=principal, source_analysis=target.name, source_table="source_runs.json", source_file="derived/timing_bias_workload_pairs.parquet",
+        filters="policy=random_order", grouping_keys="not applicable", aggregation="absence check in saved primary derived input", units="not applicable", estimate={"available_rows": 0}, ci=_unavailable("no saved random_order observations"), sample_size={"rows": 0}, commit=commit,
+    ))
+    findings.append(_report_entry(
+        finding_id="H7_scope_and_causal_limit", publication_text=(
+            "H7 is limited: the saved analyses establish descriptive associations and reproducibility checks within their configured scenarios, not causal effects, universal scaling laws, or unmeasured-policy comparisons."
+        ), source_run=principal, source_analysis=target.name, source_table="report/limitations.md", source_file="source_runs.json",
+        filters="primary preload_all analysis scope", grouping_keys="not applicable", aggregation="scope statement based on saved analysis design", units="not applicable", estimate={"primary_configuration_rows": len(timing), "paired_workload_rows": len(paired)}, ci=_unavailable("scope limitation, not an estimand"), sample_size={"configuration_rows": len(timing)}, commit=commit,
+    ))
+    report = target / "report"
+    report.mkdir(exist_ok=True)
+    report.joinpath("findings.json").write_text(json.dumps(findings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report.joinpath("findings.md").write_text(_finding_markdown(findings), encoding="utf-8")
+    report.joinpath("summary.md").write_text(
+        "# Phase II.2 publication summary\n\n"
+        f"This report refresh reads only existing v2.2 derived artifacts in `{target.name}`; it does not rerun simulation, regenerate workloads, or alter raw results. The canonical analysis is `{PRIMARY}` only: {len(paired):,} AF/DF-paired workload rows were aggregated to {len(timing):,} unique configuration rows, each with {int(timing.replication_count.min())} workload replications.\n\n"
+        f"The service-error/bias association has Pearson {service.pearson:.6f}, Spearman {service.spearman:.6f}, HC3 slope {service.slope:.6f} (95% CI [{service.hc3_ci95_low:.6f}, {service.hc3_ci95_high:.6f}]), R² {service.r_squared:.6f}, and grouped CV RMSE/MAE {service.cv_rmse:.6f}/{service.cv_mae:.6f} across {int(service.folds)} configuration-held-out folds [H2_service_error_bias_relationship].\n\n"
+        f"The zero-censoring audit covers {len(audit):,} workload-design fits: {int(censor.loc[censor.status.eq('complete'), 'n'].iloc[0]):,} complete ({float(censor.loc[censor.status.eq('complete'), 'percent'].iloc[0]):.3f}%), {int(censor.loc[censor.status.eq('one_missing'), 'n'].iloc[0]):,} with one missing positive rate, and {int(censor.loc[censor.status.eq('two_or_more_missing'), 'n'].iloc[0]):,} with two or more missing. Condition exponents average {condition.exponent.mean():.6f}; complete-case workload exponents average {complete.mean():.6f} (95% CI [{complete_ci[0]:.6f}, {complete_ci[1]:.6f}]) [H3_condition_level_scaling; H3_complete_case_scaling].\n\n"
+        f"Insertion-order results come from the separately selected verified focused run `{focused}`. In preload_all, insertion matches AF only in {float(architecture.loc[architecture.arrival_scheduling_mode.eq(PRIMARY), 'matches_af_only_percent'].iloc[0]):.6f}% of pairs; schedule_next_after_transition is labelled robustness-only and matches DF only in {float(architecture.loc[architecture.arrival_scheduling_mode.eq(ALTERNATE), 'matches_df_only_percent'].iloc[0]):.6f}% [H5_architecture_preload_all; H5_architecture_schedule_next_after_transition].\n\n"
+        "Retained predictor models and the exact-engine comparison are reported as saved analyses with their stated uncertainty limits. No random_order observation is available, and no causal, universal, or direct-estimator claim is made [H1_exact_engine_validation; H4_predictor_critical; H6_random_order_scope; H7_scope_and_causal_limit].\n",
+        encoding="utf-8",
+    )
+    report.joinpath("methodology.md").write_text(
+        "# Methodology and provenance\n\n"
+        f"**Inputs.** Principal saved run: `{principal}`. Baseline corrected analysis retained for predictor and exact-validation outputs: `{baseline}`. Focused insertion architecture source: `{focused}`, selected as the latest verified completed schema-v2 insertion-architecture run containing AF, DF, insertion_order, preload_all, and schedule_next_after_transition. The source paths and cryptographic source hashes are recorded in `source_runs.json`; this publication refresh uses only `derived/` files in `{target.name}`.\n\n"
+        f"**Primary timing unit.** The primary architecture is `{PRIMARY}`. For each workload identity and configuration (rho, capacity, delta, quantizer), AF and DF are paired first. Midpoint signed loss bias is `(loss_AF + loss_DF)/2 − exact_loss`; signed service-duration error is `(error_AF + error_DF)/2`. Those paired workload observations are then averaged to one configuration row. Thus {len(paired):,} workload-paired rows yield {len(timing):,} unique configuration rows with {int(timing.replication_count.min())} replications each; insertion, random_order, exact-as-policy, and the alternate architecture are excluded from this primary unit.\n\n"
+        "**Relationship model.** The primary descriptive OLS regresses configuration-mean midpoint bias on configuration-mean signed service-duration error. Pearson and Spearman correlations are descriptive. The slope has an HC3 standard error and normal-approximation 95% interval; out-of-sample error uses leave-one-configuration-out folds, so no configuration is in both training and test data. Quantizer rows are descriptive strata, each bootstrapped over its configuration means.\n\n"
+        "**Scaling and censoring.** Fine deltas satisfy `0 < delta <= 0.003`. For each workload-design, AF/DF collision rates are averaged before fitting one log-log slope. Zero collision rates are excluded from the logarithm, never replaced by epsilon, and their number/support are retained in the audit. Condition-level slopes instead fit one rho/capacity mean rate curve. Complete-case summaries use only all-positive fine-delta designs.\n\n"
+        "**Architecture.** The focused run pairs shared workload/configuration values across AF, DF, and insertion_order for both scheduling architectures. Matches require exact integer equality of accepted arrivals, dropped arrivals, and completed measured jobs. Explicit AF/DF policy comparisons across architectures are a separate stability audit. Alternate-architecture observations are never merged with primary timing, scaling, or predictor rows.\n\n"
+        "**Predictor and theory retention.** Predictor and exact validation tables are retained from the baseline corrected analysis rather than rebuilt. Predictor validation groups by `analysis_configuration_id`; its bootstrap is replication-level within configuration. The exact table stores condition means and counts but no saved replication-level interval.\n",
+        encoding="utf-8",
+    )
+    report.joinpath("validation.md").write_text(
+        "# Validation and audit trail\n\n"
+        f"**Input and scope checks.** `source_runs.json` records principal raw hashes for `{principal}`, focused-run raw hashes for `{focused}`, and the baseline provenance hash. The primary derived timing table contains only `{PRIMARY}` ({set(timing.arrival_scheduling_mode) == {PRIMARY}}), has {len(timing):,} rows, and its configuration identifier is unique (`{timing.configuration_id_v22.is_unique}`). It is derived from {len(paired):,} workload-paired rows with replication count range {int(timing.replication_count.min())}–{int(timing.replication_count.max())}.\n\n"
+        f"**Censoring checks.** The audit has {len(audit):,} workload-design rows and no epsilon-adjusted zero-rate field. Its categories sum to {int(censor.n.sum()):,}; positive-rate support and min/max included delta are retained per row in `derived/collision_zero_censoring_audit.csv`. The condition table has {len(condition)} rho/capacity rows, one slope per condition.\n\n"
+        f"**Architecture checks.** The focused summary has {len(architecture)} architecture rows with pair counts totaling {int(architecture.paired_count.sum()):,}. In each row, the four exclusive match categories sum to 100%: " + "; ".join(f"{row.arrival_scheduling_mode}={row.matches_both_percent + row.matches_af_only_percent + row.matches_df_only_percent + row.matches_neither_percent:.6f}%" for row in architecture.itertuples(index=False)) + f". Explicit-policy stability has {len(explicit):,} paired rows and is reported without pooling it into primary data.\n\n"
+        f"**Predictor checks.** The retained table has {len(models)} models over {int(models.n.iloc[0])} primary configurations; every model records {int(models.n_folds.iloc[0])} grouped folds and `train_test_groups_disjoint={bool(models.train_test_groups_disjoint.all())}`.\n\n"
+        "**Publication checks.** `manifests/figures.csv` records 36 EN/RU PNG/SVG/PDF figure assets. `manifests/artifacts.csv` hashes every current derived, table, figure, and report artifact. This report refresh deliberately does not claim that theory has a CI, does not treat excluded zeros as observed log values, and does not add absent random_order data.\n",
+        encoding="utf-8",
+    )
+    report.joinpath("limitations.md").write_text(
+        "# Limitations and interpretation boundaries\n\n"
+        "1. **Primary scope only.** Primary conclusions apply to preload_all AF/DF paired observations in the configured scenarios. schedule_next_after_transition is a separately labelled architecture robustness comparison, not an additional primary sample or scheduler-mode duplicate.\n\n"
+        "2. **No causal claim.** Correlations, OLS coefficients, and predictor fits are descriptive associations under the saved design. They do not identify causal effects of quantization error, collision rates, queue capacity, or scheduling policy. In particular, the critical-rate coefficient is below one in the retained single-predictor model and is not a direct estimator.\n\n"
+        "3. **Zero censoring changes support.** Log-log slopes exclude zero collision rates because `log(0)` is undefined. The audit reports complete, one-missing, and two-or-more-missing categories; condition-level and complete-case summaries answer different descriptive questions and should not be collapsed into a universal exponent.\n\n"
+        "4. **Uncertainty availability differs by output.** Timing slopes use HC3 intervals; selected means and scaling summaries use stated bootstraps. The saved exact validation table has no replication-level CI, and the focused architecture count audit has no resampling interval. These are reported as unavailable rather than reconstructed from raw data.\n\n"
+        "5. **Policy coverage.** random_order is absent from the principal saved Phase II.2 inputs. It is explicitly not tested; no result is imputed. Insertion_order is examined only in the focused architecture synthesis and is not part of primary timing-bias, scaling, or predictor analyses.\n\n"
+        "6. **Saved-data boundary.** This refresh intentionally uses existing v2.2 derived/tables/figures only. It neither reruns simulations nor regenerates raw data, so it cannot recover analyses requiring unavailable replication-level exact-validation data or absent policies.\n",
+        encoding="utf-8",
+    )
+    _report_manifest(target)
+
+
 def analyze_phase22(principal: Path, baseline: Path, focused: Path | None = None) -> Path:
     """Create a v2.2 directory; all source runs remain read-only."""
     if focused is None: focused=principal.parent.parent/"insertion-architecture-v2-20260730T092338223105Z"
@@ -180,16 +422,5 @@ def analyze_phase22(principal: Path, baseline: Path, focused: Path | None = None
     source_runs={"principal":{"path":str(principal),"raw_hashes":{p.name:_sha(p) for p in (principal/"raw").glob("*.parquet")}},"baseline":{"path":str(baseline),"provenance_hash":_sha(baseline/"provenance.json")},"focused_insertion":{"path":str(focused),"raw_hashes":{p.name:_sha(p) for p in (focused/"raw").glob("*.parquet")}}};atomic_json(source_runs,target/"source_runs.json")
     config={"schema":"phase_ii_2","primary_architecture":PRIMARY,"fine_delta_max":.003,"focused_selection_rule":design.focused_selection_rule.iloc[0]};save_yaml(config,target/"config.resolved.yaml");atomic_json({"analysis_id":target.name,"created_utc":datetime.now(UTC).isoformat(),"git_commit":commit,"source_runs":source_runs,"config_hash":hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest()},target/"provenance.json")
     _figures(target,timing,audit,condition,timing,arch_pairs)
-    service=relationships[relationships.model=="service_signed"].iloc[0];critical=models[models.model=="critical"].iloc[0];complete=audit[audit.status=="complete"].exponent;complete_ci=_ci(complete)
-    findings=[{"id":"service_bias_relationship","publication_text":"Signed service-duration error is descriptively associated with midpoint loss bias.","source_run":principal.name,"source_analysis":baseline.name,"table":"derived/timing_relationships.csv","filters":"preload_all, AF/DF paired","grouping":"configuration","aggregation":"mean of 30 workload pairs","units":"loss probability per time error","estimate":float(service.slope),"ci":[float(service.hc3_ci95_low),float(service.hc3_ci95_high)],"n":int(service.n),"commit":commit},{"id":"complete_case_scaling","publication_text":"Complete-case fine-delta workload exponents are reported with zero-censoring disclosed.","source_run":principal.name,"source_analysis":baseline.name,"table":"derived/collision_zero_censoring_audit.csv","filters":"preload_all; positive collision rates only","grouping":"workload-design","aggregation":"complete-case mean","units":"log-log exponent","estimate":float(complete.mean()),"ci":list(complete_ci),"n":len(complete),"commit":commit},{"id":"critical_predictor","publication_text":"Critical rate remains an association rather than a direct estimator.","source_run":principal.name,"source_analysis":baseline.name,"table":"derived/predictor_models_retained.csv","filters":"preload_all configurations","grouping":"configuration","aggregation":"retained model","units":"loss probability per critical rate","estimate":float(critical.coefficient_critical_collision_rate),"ci":[float(critical.bootstrap_ci95_low_coefficient_critical_collision_rate),float(critical.bootstrap_ci95_high_coefficient_critical_collision_rate)],"n":int(critical.n),"commit":commit}]
-    (target/"report"/"summary.md").write_text(f"# Phase II.2 summary\n\nPrimary scope is `{PRIMARY}` only. Timing analysis has {len(timing)} configuration rows from {len(paired)} paired workloads. Zero-censoring audit has {len(audit)} workload-design fits. The selected architecture run is `{focused.name}`.\n",encoding="utf-8")
-    (target/"report"/"methodology.md").write_text("# Methodology\n\nAF/DF are paired within workload replication before configuration aggregation. Collision fits exclude zero rates without epsilon replacement and disclose censoring. Architecture results use a separately selected verified focused run.\n",encoding="utf-8")
-    (target/"report"/"findings.md").write_text("# Findings\n\n"+"\n\n".join(f"- {x['publication_text']} Estimate={x['estimate']:.6g}; n={x['n']}; source `{x['table']}`." for x in findings)+"\n",encoding="utf-8")
-    (target/"report"/"limitations.md").write_text("# Limitations\n\nNo causal claims are made. Zero collision rates are censored for log fitting and reported explicitly. Theory validation has no confidence interval. Random-order results are unavailable in the principal run.\n",encoding="utf-8")
-    (target/"report"/"validation.md").write_text(f"# Validation\n\nPrimary configuration IDs unique: {timing.configuration_id_v22.is_unique}. Predictor configurations retained: {len(predictor)}. Explicit architecture equality is reported rather than assumed.\n",encoding="utf-8")
-    (target/"report"/"findings.json").write_text(json.dumps(findings,indent=2),encoding="utf-8")
-    artifact: list[dict[str, str]]=[]
-    for directory in (target/"derived",target/"figures",target/"tables",target/"report"):
-        artifact.extend({"path":str(p.relative_to(target)),"sha256":_sha(p)} for p in directory.glob("*") if p.is_file())
-    pd.DataFrame(artifact).to_csv(target/"manifests"/"artifacts.csv",index=False)
+    refresh_phase22_report(target)
     return target

@@ -112,6 +112,14 @@ def _phase22_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _phase22_report(args: argparse.Namespace) -> int:
+    from .phase22 import refresh_phase22_report
+
+    refresh_phase22_report(Path(args.analysis_dir))
+    print(Path(args.analysis_dir))
+    return 0
+
+
 def _compare_runs(args: argparse.Namespace) -> int:
     from .verification import compare_runs
 
@@ -179,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
     phase22.add_argument("--baseline-analysis", required=True)
     phase22.add_argument("--focused-run")
     phase22.set_defaults(func=_phase22_analyze)
+    phase22_report = commands.add_parser("phase22-report")
+    phase22_report.add_argument("--analysis-dir", required=True)
+    phase22_report.set_defaults(func=_phase22_report)
     compare = commands.add_parser("compare-runs")
     compare.add_argument("--analysis-dir", action="append", required=True)
     compare.add_argument("--output-dir")
