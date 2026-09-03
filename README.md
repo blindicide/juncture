@@ -1,3 +1,5 @@
+> **Archive Notice:** This repository is archived. Completed research project consolidated into [blindicide/sci-archive](https://github.com/blindicide/sci-archive) under `juncture/`.
+
 # Juncture
 
 Juncture is a reproducible study of whether finite timestamp resolution changes results in a finite-capacity single-server queue. It compares an exact continuous-time M/M/1/K reference with integer-tick simulations where arrivals and departures can share a timestamp.
